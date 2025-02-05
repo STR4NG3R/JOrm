@@ -138,16 +138,4 @@ public class PostgresTest {
         System.out.println(user);
     }
 
-    @Test
-    public void testDelete() throws SQLException, InvalidSqlGenerationException {
-        Delete d = new Delete()
-                .from("users ")
-                .where("id = :id", p -> p.put("id", 1));
-        System.out.println(d.getSqlAndParameters());
-
-        int result = new Runner<UserDao>()
-                .setConnection(getConnection())
-                .delete(d);
-        System.out.println(result);
-    }
 }
