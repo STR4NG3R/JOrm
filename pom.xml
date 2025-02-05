@@ -26,7 +26,7 @@
         <dependency>
             <groupId>com.github.STR4NG3R</groupId>
             <artifactId>querybuilder4j</artifactId>
-            <version>1.0.7</version>
+            <version>1.0.8</version>
         </dependency>
 
         <!-- Testcontainers Core -->
