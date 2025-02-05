@@ -36,7 +36,7 @@ For default installation, see [Releases](https://github.com/derickfelix/jsqb/rel
 ### 1.1. Installation with Maven [↑](#index_block)
 To install with maven
 
-[![](https://jitpack.io/v/STR4NG3R/querybuilder4j.svg)](https://jitpack.io/#STR4NG3R/querybuilder4j)
+[![](https://jitpack.io/v/STR4NG3R/JOrm.svg)](https://jitpack.io/#STR4NG3R/JOrm)
 
 Step 1. Add the JitPack repository to your build file
 ```xml
@@ -47,12 +47,13 @@ Step 1. Add the JitPack repository to your build file
     </repository>
 </repositories>
 ```
+
 Step 2. Add the dependency
 ```xml
 <dependency>
-    <groupId>com.github.STR4NG3R</groupId>
-    <artifactId>querybuilder4j</artifactId>
-    <version>1.0.2</version>
+   <groupId>com.github.STR4NG3R</groupId>
+   <artifactId>JOrm</artifactId>
+   <version>Tag</version>
 </dependency>
 ```
 
