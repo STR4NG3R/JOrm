@@ -16,6 +16,7 @@ You could look at the unit test cases to get some inspiration.
 * [2. SELECT Statement](#block2)
     * [2.1. Basic SELECT statement](#block2.1)
     * [2.2. SELECT with Specific Fields statement](#block2.2)
+    * [2.3. SELECT with pagination](#block2.2)
 * [3. INNER JOIN statement](#block3)
     * [3.1 Simple Inner join](#block3.1)
 * [4. Insert Statement](#block4)
@@ -112,6 +113,45 @@ public class Usage {
 }
 ```
 
+<a name="block2.3"></a>
+### 2.3. SELECT with Pagination [↑](#index_block)
+You can paginate your database as simple like below code
+#### Usage:
+```java
+public class Usage {
+    public static void main(String[] args)
+    {
+      String name = "Pablo", lastName = null, cp = null;
+      Selector s = new Selector()
+              .select("users as u",
+                      "u.id id", "u.name name", "u.email email", "u.role role",
+                      "u.email as email"
+              )
+              .join(Join.JOIN.LEFT, "userAddress as ua", "u.id = ua.userId")
+              .join(Join.JOIN.INNER, "addresses as a", "a.id = ua.addressId")
+              .setDialect(Constants.SqlDialect.Postgres);
+
+      if (name != null)
+        s.andWhere("u.name LIKE  CONCAT('%', :name, '%')", parameters -> parameters.put("name", name));
+
+      if (lastName != null)
+        s.andWhere("u.lastName LIKE CONCAT('%', :lastName, '%')", parameters -> parameters.put("lastName", lastName));
+
+      if (cp != null)
+        s.andWhere("a.cp = :cp", parameters -> parameters.put("cp", cp));
+
+      Template<List<UserDao>> paginated = new Runner<UserDao>()
+              .setConnection(getConnection())
+              .selectPaginated(
+                      1,
+                      10,
+                      s,
+                      UserDao.class
+              );
+      // This generate a paginated list with the first 10 elements
+    }
+}
+```
 
 <a name="block3"></a>
 ## 3. INNER JOIN statement [↑](#index_block)
