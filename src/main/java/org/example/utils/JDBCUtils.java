@@ -13,12 +13,11 @@ import java.util.List;
 public class JDBCUtils{
     public static void addParameters(PreparedStatement ps, List<Object> parameters) throws SQLException {
         ps.clearParameters();
-        System.out.println("Holas");
-        System.out.println(parameters);
         for (int i = 0; i < parameters.size(); i++) ps.setObject(i + 1, parameters.get(i));
     }
 
-    public static int getCount(Connection connection, Selector s, SqlParameter sqlParameter) throws SQLException {
+    public static int getCount(Connection connection, Selector s, SqlParameter sqlParameter, boolean withDeleted) throws SQLException {
+        // s.withDeleted(withDeleted);
         PreparedStatement ps = connection.prepareStatement(s.getCount(sqlParameter.sql));
         addParameters(ps, sqlParameter.getListParameters());
         ResultSet rs = ps.executeQuery();
@@ -28,9 +27,9 @@ public class JDBCUtils{
     }
 
 
-    public static ResultSet createResultSet(Selector selector, Connection connection) throws SQLException, InvalidSqlGenerationException {
+    public static ResultSet createResultSet(Selector selector, Connection connection, boolean withDeleted) throws SQLException, InvalidSqlGenerationException {
+        //selector.setWithDeleted(withDeleted);
         SqlParameter sqlParameter = selector.getSqlAndParameters();
-        System.out.println(sqlParameter);
         PreparedStatement ps = connection.prepareStatement(sqlParameter.sql);
         JDBCUtils.addParameters(ps, sqlParameter.getListParameters());
         return ps.executeQuery();

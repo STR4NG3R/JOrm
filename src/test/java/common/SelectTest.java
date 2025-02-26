@@ -30,10 +30,6 @@ public class SelectTest {
         SqlParameter sql = selector.getSqlAndParameters();
 
         cb.accept(selector);
-        // Execute this...
-//        selector.getCount(sql.sql);
-//        Integer count = 1000;
-//        selector.setPagination(sql, new Pagination(pageSize, count, page));
     }
 
 
@@ -67,4 +63,10 @@ public class SelectTest {
                 .setDialect(Constants.SqlDialect.Postgres);
     }
 
+
+    public static Selector getFirstUser() {
+        return new Selector()
+                .select("users", "id", "name", "email", "password", "role", "updatedAt as \"updatedAt\"")
+                .where("id = :id", (p) -> p.put("id", 1));
+    }
 }

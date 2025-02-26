@@ -1,9 +1,10 @@
 package dao;
 
 
-import org.example.Column;
-import org.example.Entity;
-import org.example.Id;
+import org.example.*;
+
+import java.sql.Date;
+import java.sql.Timestamp;
 
 @Entity(name = "users")
 public class UserDao {
@@ -20,6 +21,15 @@ public class UserDao {
 
     @Column
     String password;
+
+    @UpdatedAt
+    Timestamp updatedAt;
+
+    @DeletedAt
+    Date deletedAt;
+
+    @CreatedAt
+    Date createdAt;
 
     public String getPassword() {
         return password;
@@ -85,6 +95,9 @@ public class UserDao {
                 ", email='" + email + '\'' +
                 ", role='" + role + '\'' +
                 ", password='" + password + '\'' +
+                ", updatedAt=" + updatedAt +
+                ", deletedAt=" + deletedAt +
+                ", createdAt=" + createdAt +
                 '}';
     }
 }

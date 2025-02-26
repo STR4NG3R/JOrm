@@ -6,6 +6,7 @@ import dao.UserDao;
 import io.github.str4ng3r.common.*;
 import io.github.str4ng3r.exceptions.InvalidCurrentPageException;
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
+import org.example.sql.Configuration;
 import org.example.sql.Runner;
 import org.junit.Before;
 import org.junit.ClassRule;
@@ -31,7 +32,7 @@ public class PostgresTest {
     Connection getConnection() throws SQLException {
         if (connection == null)
             connection = DriverManager.getConnection(
-                    postgresContainer.getJdbcUrl(),
+                    postgresContainer.getJdbcUrl() + "?stringtype=unspecified",
                     postgresContainer.getUsername(),
                     postgresContainer.getPassword());
         return connection;
@@ -59,6 +60,7 @@ public class PostgresTest {
         }
 
         assertEquals("test", 1, 1);
+        Runner.setConfiguration(new Configuration().scanPath("dao"));
     }
 
     @Test
@@ -81,9 +83,12 @@ public class PostgresTest {
     @Test
     public void selectUsersMapper() throws SQLException, InvalidSqlGenerationException {
         List<UserDao> list = new Runner<UserDao>()
+                .withDeleted(false)
                 .setConnection(getConnection())
                 .select(
-                        SelectTest.baseQueryUsers("o", null, null), UserDao.class
+                        SelectTest.baseQueryUsers("o", null, null)
+                                .setWithDeleted(false)
+                        , UserDao.class
                 );
     }
 
@@ -114,9 +119,7 @@ public class PostgresTest {
         UserDao user = new Runner<UserDao>()
                 .setConnection(getConnection())
                 .select(
-                        new Selector()
-                                .select("users", "id", "name", "email", "password", "role")
-                                .where("id = :id", (p) -> p.put("id", 1)),
+                        SelectTest.getFirstUser(),
                         UserDao.class
                 ).get(0);
 
@@ -129,9 +132,7 @@ public class PostgresTest {
         user = new Runner<UserDao>()
                 .setConnection(getConnection())
                 .select(
-                        new Selector()
-                                .select("users", "id", "name", "email", "password", "role")
-                                .where("id = :id", (p) -> p.put("id", 1)),
+                        SelectTest.getFirstUser(),
                         UserDao.class
                 ).get(0);
 

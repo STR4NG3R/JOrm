@@ -1,56 +1,17 @@
-package org.example;
+package org.example.sql;
 
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
+import org.example.*;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.util.*;
-import java.util.function.Consumer;
+
+import static org.example.sql.ScannerEntity.*;
 
 public class Mapper<T> {
-
-    public void iterateFields(Class<T> clazz, Consumer<Field> consumer) {
-        for (Field field : clazz.getDeclaredFields()) {
-            field.setAccessible(true);
-            consumer.accept(field);
-        }
-    }
-
-    public void getColumnsFromEntity(Class<T> clazz, ProcessedEntity processedEntity) {
-        List<String> columns = new ArrayList<>();
-        iterateFields(clazz,
-                field -> {
-                    if (field.isAnnotationPresent(Column.class)) {
-                        columns.add(field.getName());
-                        return;
-                    }
-                    if (field.isAnnotationPresent(Id.class)) processedEntity.setColumnId(field.getName());
-                });
-        processedEntity.setColumns(columns);
-    }
-
-    public void getValuesFromEntity(Class<T> clazz, T entity, ProcessedEntity processedEntity) {
-        List<Object> values = new ArrayList<>();
-        iterateFields(clazz,
-                field -> {
-                    try {
-                        if (field.isAnnotationPresent(Column.class)) {
-                            values.add(field.get(entity));
-                            return;
-                        }
-                        if (field.isAnnotationPresent(Id.class)) {
-                            processedEntity.setColumnIdValue(field.get(entity));
-                        }
-                    } catch (IllegalAccessException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-        processedEntity.setValues(values);
-    }
-
-
     Class<T> validateEntity(T entity) throws InvalidSqlGenerationException {
         Class<T> clazz = (Class<T>) entity.getClass();
         if (!clazz.isAnnotationPresent(Entity.class)) {
@@ -59,19 +20,21 @@ public class Mapper<T> {
         return clazz;
     }
 
-    public String getTableNameFromEntity(T entity) {
-        return entity.getClass().getAnnotation(Entity.class).name();
-    }
 
-    public ProcessedEntity mapFromEntitiy(T entity) throws InvalidSqlGenerationException {
+    public EntityMetaData mapFromEntity(T entity) throws InvalidSqlGenerationException {
         Class<T> clazz = validateEntity(entity);
-        ProcessedEntity processedEntity = new ProcessedEntity();
-        processedEntity.setTableName(getTableNameFromEntity(entity));
-        getColumnsFromEntity(clazz, processedEntity);
+        EntityMetaData processedEntity = new EntityMetaData();
+        getTableNameFromEntity(entity, processedEntity);
+        String k = createKey(processedEntity.tableName, processedEntity.db, processedEntity.schema);
+        if (entities.containsKey(k)) processedEntity = entities.get(k);
+        else getColumnsFromEntity(clazz, processedEntity);
         getValuesFromEntity(clazz, entity, processedEntity);
         return processedEntity;
     }
 
+    public void flushValues(EntityMetaData e) {
+        while (!e.values.isEmpty()) e.values.remove(0);
+    }
 
     public T mapFromHashMap(Map<String, Object> data, Class<T> clazz) {
         try {
@@ -91,7 +54,6 @@ public class Mapper<T> {
 
     public List<T> mapFromResultSet(ResultSet rs, Class<T> clazz) {
         List<T> list = new ArrayList<>();
-
         try {
             ResultSetMetaData metaData = rs.getMetaData();
             int columnCount = metaData.getColumnCount();
@@ -101,6 +63,10 @@ public class Mapper<T> {
 
                 for (int i = 1; i <= columnCount; i++) {
                     String columnName = metaData.getColumnLabel(i);
+                    String a = metaData.getColumnName(i);
+                    String b = metaData.getColumnClassName(i);
+                    if (columnName.equals("updatedat")) columnName = "updatedAt";
+
                     Object columnValue = rs.getObject(i);
 
                     if (columnValue != null) {
@@ -158,51 +124,4 @@ public class Mapper<T> {
         }
     }
 
-    public static class ProcessedEntity {
-        List<String> columns;
-        List<Object> values;
-        String tableName;
-        String columnId;
-        Object columnIdValue;
-
-        public List<String> getColumns() {
-            return columns;
-        }
-
-        public void setColumns(List<String> columns) {
-            this.columns = columns;
-        }
-
-        public List<Object> getValues() {
-            return values;
-        }
-
-        public void setValues(List<Object> values) {
-            this.values = values;
-        }
-
-        public String getTableName() {
-            return tableName;
-        }
-
-        public void setTableName(String tableName) {
-            this.tableName = tableName;
-        }
-
-        public void setColumnIdValue(Object columnIdValue) {
-            this.columnIdValue = columnIdValue;
-        }
-
-        public String getColumnId() {
-            return columnId;
-        }
-
-        public Object getColumnIdValue() {
-            return columnIdValue;
-        }
-
-        public void setColumnId(String columnId) {
-            this.columnId = columnId;
-        }
-    }
 }

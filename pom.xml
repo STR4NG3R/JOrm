@@ -22,12 +22,20 @@
     </repositories>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.str4ng3r</groupId>
+            <artifactId>querybuilder</artifactId>
+            <version>1.0.2</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/src/main/resources/QueryBuilder-1.0.2-SNAPSHOT.jar</systemPath>
+        </dependency>
 
         <dependency>
-            <groupId>com.github.STR4NG3R</groupId>
-            <artifactId>querybuilder4j</artifactId>
-            <version>1.0.8</version>
+            <groupId>org.reflections</groupId>
+            <artifactId>reflections</artifactId>
+            <version>0.10.2</version>
         </dependency>
+
 
         <!-- Testcontainers Core -->
         <dependency>

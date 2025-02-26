@@ -5,7 +5,8 @@ CREATE TABLE users (
     password VARCHAR(255) NOT NULL,       -- Password (hashed for security)
     role VARCHAR(255) DEFAULT 'user',     -- User role with predefined values
     createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Timestamp for record creation
-    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- Timestamp for last update
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Timestamp for last update
+    deletedAt TIMESTAMP DEFAULT NULL
 );
 
 CREATE TABLE addresses (
