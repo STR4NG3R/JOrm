@@ -1,0 +1,51 @@
+name: Lambda Bedrock PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get PR Diff
+        id: diff
+        run: |
+          git fetch origin pull/${{ github.event.pull_request.number }}/head
+          git diff origin/main...HEAD > diff.txt
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          sed 's/%/%25/g; s/\n/%0A/g; s/\r/%0D/g' diff.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Invoke Lambda
+        id: lambda
+        run: |
+          echo '${{ steps.diff.outputs.diff }}' > diff.txt
+
+          PAYLOAD=$(jq -R -s '{"diff": .}' diff.txt)
+
+          aws lambda invoke \
+            --function-name aws-pr-review \
+            --payload "$PAYLOAD" \
+            response.json
+
+          echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: |
+            ### 🤖 PR Review (AWS Lambda + Bedrock)
+
+            ${{ steps.lambda.outputs.result }}
