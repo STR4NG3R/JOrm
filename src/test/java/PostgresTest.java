@@ -123,7 +123,7 @@ public class PostgresTest {
                         SelectTest.getFirstUser(),
                         UserDao.class
                 ).get(0);
-
+        System.out.println("dummy");
         System.out.println(user);
 
         new Runner<UserDao>()
