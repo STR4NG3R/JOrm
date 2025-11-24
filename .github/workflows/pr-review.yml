@@ -49,11 +49,18 @@ jobs:
           head -n 100 ./diff/pr_diff.txt  # show first 100 lines
           echo "=== PR Diff End ==="
 
-          # Base64 encode diff safely (without line breaks)
-          base64 -w 0 ./diff/pr_diff.txt > pr_diff.b64
+          # Strip CRs and encode
+          tr -d '\r' < ./diff/pr_diff.txt | base64 -w 0 > pr_diff.b64
 
-          # Wrap into JSON safely
+          # Wrap into JSON
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
+
+          # Invoke Lambda
+          aws lambda invoke \
+            --function-name pr-reviewer \
+            --payload file://payload.json \
+            response.json
+
 
           # Call Lambda using the file payload
           aws lambda invoke \
