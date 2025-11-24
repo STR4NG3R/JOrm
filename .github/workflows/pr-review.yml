@@ -1,4 +1,4 @@
-name: Lambda Bedrock PR Review
+name: Lambda PR Review
 
 on:
   pull_request:
@@ -9,31 +9,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Get PR Diff
-        id: diff
+      - name: Fetch PR + base branches
         run: |
-          # Fetch the PR branch
           git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_branch
-
-          # Fetch default branch (main/master/etc.)
           git fetch origin ${{ github.event.repository.default_branch }}:default_branch
-
-          # Checkout the PR head
           git checkout pr_branch
 
-          # Now the diff works reliably
+      - name: Generate Diff
+        id: diff
+        run: |
           git diff default_branch...pr_branch > diff.txt
-
           echo "diff<<EOF" >> $GITHUB_OUTPUT
           sed 's/%/%25/g; s/\n/%0A/g; s/\r/%0D/g' diff.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          
-
-      - name: AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -44,22 +36,18 @@ jobs:
         id: lambda
         run: |
           echo '${{ steps.diff.outputs.diff }}' > diff.txt
-
           PAYLOAD=$(jq -R -s '{"diff": .}' diff.txt)
 
           aws lambda invoke \
-            --function-name aws-pr-review \
+            --function-name pr-reviewer \
             --payload "$PAYLOAD" \
             response.json
 
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
 
-      - name: Comment on PR
+      - name: Post Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           message: |
-            ### 🤖 PR Review (AWS Lambda + Bedrock)
-
+            ### 🤖 AWS Lambda + Bedrock PR Review
             ${{ steps.lambda.outputs.result }}
-
-
