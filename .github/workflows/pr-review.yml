@@ -41,15 +41,14 @@ jobs:
           name: pr-diff-${{ github.event.pull_request.number }}
           path: ./diff
 
-      - name: Print PR Diff safely
+
+      - name: Invoke AWS Lambda
+        id: lambda
         run: |
           echo "=== PR Diff Start ==="
           head -n 100 ./diff/pr_diff.txt  # show first 100 lines
           echo "=== PR Diff End ==="
 
-      - name: Invoke AWS Lambda
-        id: lambda
-        run: |
           # Base64 encode diff safely (without line breaks)
           base64 -w 0 ./diff/pr_diff.txt > pr_diff.b64
 
