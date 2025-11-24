@@ -50,10 +50,10 @@ jobs:
       - name: Invoke AWS Lambda
         id: lambda
         run: |
-          # Base64 encode the diff safely
-          base64 ./diff/pr_diff.txt > pr_diff.b64
+          # Base64 encode diff safely (without line breaks)
+          base64 -w 0 ./diff/pr_diff.txt > pr_diff.b64
 
-          # Create JSON payload
+          # Wrap into JSON safely
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
 
           # Call Lambda using the file payload
