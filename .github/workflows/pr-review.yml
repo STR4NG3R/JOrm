@@ -44,14 +44,16 @@ jobs:
       - name: Invoke AWS Lambda
         id: lambda
         run: |
-          # Read diff and encode it as JSON-safe UTF-8
-          PAYLOAD=$(jq -Rs --arg prdiff "$(cat ./diff/pr_diff.txt)" '{diff: $prdiff}')
+          # Create JSON file payload from diff.txt
+          jq -Rs '{diff: .}' ./diff/pr_diff.txt > payload.json
 
+          # Call Lambda using the file as payload
           aws lambda invoke \
             --function-name pr-reviewer \
-            --payload "$PAYLOAD" \
+            --payload file://payload.json \
             response.json
 
+          # Save result to GitHub output
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
 
 
