@@ -104,6 +104,7 @@ public class PostgresTest {
                 );
 
         System.out.println(paginated);
+        System.out.println("dummy");
     }
 
 
