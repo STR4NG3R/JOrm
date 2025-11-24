@@ -44,8 +44,8 @@ jobs:
       - name: Invoke AWS Lambda
         id: lambda
         run: |
-          DIFF=$(cat ./diff/pr_diff.txt)
-          PAYLOAD=$(jq -n --arg diff "$DIFF" '{"diff": $diff}')
+          # Read diff and encode it as JSON-safe UTF-8
+          PAYLOAD=$(jq -Rs --arg prdiff "$(cat ./diff/pr_diff.txt)" '{diff: $prdiff}')
 
           aws lambda invoke \
             --function-name pr-reviewer \
@@ -53,6 +53,7 @@ jobs:
             response.json
 
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
+
 
       - name: Post PR Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
