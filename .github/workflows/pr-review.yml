@@ -9,22 +9,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # 1️⃣ Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Fetch PR + base branches
+      # 2️⃣ Fetch PR + default branch
+      - name: Fetch PR and default branch
         run: |
           git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_branch
           git fetch origin ${{ github.event.repository.default_branch }}:default_branch
           git checkout pr_branch
 
-      - name: Generate Diff
-        id: diff
+      # 3️⃣ Generate the PR diff
+      - name: Generate PR Diff
         run: |
-          git diff default_branch...pr_branch > diff.txt
-          echo "diff<<EOF" >> $GITHUB_OUTPUT
-          sed 's/%/%25/g; s/\n/%0A/g; s/\r/%0D/g' diff.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          git diff default_branch...pr_branch > pr_diff.txt
 
+      # 4️⃣ Upload diff as artifact
+      - name: Upload PR Diff Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: pr-diff-${{ github.event.pull_request.number }}
+          path: pr_diff.txt
+
+      # 5️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -32,11 +40,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Invoke Lambda
+      # 6️⃣ Download the artifact (optional, could be skipped if in same job)
+      - name: Download PR Diff Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: pr-diff-${{ github.event.pull_request.number }}
+          path: ./diff
+
+      # 7️⃣ Invoke Lambda with the diff
+      - name: Invoke AWS Lambda
         id: lambda
         run: |
-          echo '${{ steps.diff.outputs.diff }}' > diff.txt
-          PAYLOAD=$(jq -R -s '{"diff": .}' diff.txt)
+          DIFF=$(cat ./diff/pr_diff.txt)
+          PAYLOAD=$(jq -n --arg diff "$DIFF" '{"diff": $diff}')
 
           aws lambda invoke \
             --function-name pr-reviewer \
@@ -45,11 +61,11 @@ jobs:
 
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
 
-      - name: Post Review Comment
+      # 8️⃣ Post PR comment with Lambda review
+      - name: Post PR Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           message: |
             ### 🤖 AWS Lambda + Bedrock PR Review
-            ${{ steps.lambda.outputs.result }}
 
-            
+            ${{ steps.lambda.outputs.result }}
