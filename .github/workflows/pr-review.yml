@@ -41,6 +41,15 @@ jobs:
           name: pr-diff-${{ github.event.pull_request.number }}
           path: ./diff
 
+      
+      
+      - name: Print PR Diff safely
+        run: |
+          echo "=== PR Diff Start ==="
+          head -n 100 ./diff-inspect/pr_diff.txt  # show first 100 lines
+          echo "=== PR Diff End ==="
+
+
       - name: Invoke AWS Lambda
         id: lambda
         run: |
