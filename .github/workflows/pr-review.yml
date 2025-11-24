@@ -50,8 +50,11 @@ jobs:
       - name: Invoke AWS Lambda
         id: lambda
         run: |
-          # Create JSON payload from diff file (UTF-8 safe)
-          jq -Rs '{diff: .}' ./diff/pr_diff.txt > payload.json
+          # Base64 encode the diff safely
+          base64 ./diff/pr_diff.txt > pr_diff.b64
+
+          # Create JSON payload
+          jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
 
           # Call Lambda using the file payload
           aws lambda invoke \
@@ -61,6 +64,7 @@ jobs:
 
           # Save result to GitHub output
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
+
 
       - name: Post PR Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
