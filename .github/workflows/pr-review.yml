@@ -16,10 +16,14 @@ jobs:
         id: diff
         run: |
           git fetch origin pull/${{ github.event.pull_request.number }}/head
-          git diff origin/main...HEAD > diff.txt
+          git fetch origin ${{ github.event.repository.default_branch }}
+      
+          git diff origin/${{ github.event.repository.default_branch }}...HEAD > diff.txt
+      
           echo "diff<<EOF" >> $GITHUB_OUTPUT
           sed 's/%/%25/g; s/\n/%0A/g; s/\r/%0D/g' diff.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
 
       - name: AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -49,4 +53,5 @@ jobs:
             ### 🤖 PR Review (AWS Lambda + Bedrock)
 
             ${{ steps.lambda.outputs.result }}
+
 
