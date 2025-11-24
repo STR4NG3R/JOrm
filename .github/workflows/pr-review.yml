@@ -41,22 +41,19 @@ jobs:
           name: pr-diff-${{ github.event.pull_request.number }}
           path: ./diff
 
-      
-      
       - name: Print PR Diff safely
         run: |
           echo "=== PR Diff Start ==="
-          head -n 100 ./diff-inspect/pr_diff.txt  # show first 100 lines
+          head -n 100 ./diff/pr_diff.txt  # show first 100 lines
           echo "=== PR Diff End ==="
-
 
       - name: Invoke AWS Lambda
         id: lambda
         run: |
-          # Create JSON file payload from diff.txt
+          # Create JSON payload from diff file (UTF-8 safe)
           jq -Rs '{diff: .}' ./diff/pr_diff.txt > payload.json
 
-          # Call Lambda using the file as payload
+          # Call Lambda using the file payload
           aws lambda invoke \
             --function-name pr-reviewer \
             --payload file://payload.json \
@@ -64,7 +61,6 @@ jobs:
 
           # Save result to GitHub output
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
-
 
       - name: Post PR Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
