@@ -45,10 +45,6 @@ jobs:
       - name: Invoke AWS Lambda
         id: lambda
         run: |
-          echo "=== PR Diff Start ==="
-          head -n 100 ./diff/pr_diff.txt  # show first 100 lines
-          echo "=== PR Diff End ==="
-
           # Strip CRs and encode
           tr -d '\r' < ./diff/pr_diff.txt | base64 -w 0 > pr_diff.b64
 
