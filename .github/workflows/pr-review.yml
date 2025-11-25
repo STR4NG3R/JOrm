@@ -55,18 +55,13 @@ jobs:
           # Wrap into JSON
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
 
+          echo "Call Lambda"
           # Invoke Lambda
           aws lambda invoke \
             --function-name pr-reviewer \
             --payload file://payload.json \
             response.json
-
-
-          # Call Lambda using the file payload
-          aws lambda invoke \
-            --function-name pr-reviewer \
-            --payload file://payload.json \
-            response.json
+          echo "Finish Call"
 
           # Save result to GitHub output
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
