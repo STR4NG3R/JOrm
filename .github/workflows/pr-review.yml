@@ -45,8 +45,8 @@ jobs:
       - name: Invoke AWS Lambda
         id: lambda
         run: |
-          # Strip CRs and encode
-          tr -d '\r' < ./diff/pr_diff.txt | base64 -w 0 > pr_diff.b64
+          # Strip CRs and encode          
+          base64 ./diff/pr_diff.txt | jq -Rs '{file: .}' > payload.json
 
           # Wrap into JSON
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
