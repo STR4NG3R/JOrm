@@ -46,10 +46,7 @@ jobs:
         id: lambda
         run: |
           # Strip CRs and encode          
-          base64 ./diff/pr_diff.txt | jq -Rs '{file: .}' > payload.json
-
-          # Wrap into JSON
-          jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
+          base64 ./diff/pr_diff.txt | jq -Rs '{diff_base64: .}' > payload.json
 
           echo "Call Lambda"
           # Invoke Lambda
