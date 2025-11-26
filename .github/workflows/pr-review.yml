@@ -46,7 +46,6 @@ jobs:
           jq . payload.json
 
 
-          ls -lh ./diff/payload.json
           ls -lh payload.json
 
           echo "Call Lambda"
