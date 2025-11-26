@@ -9,25 +9,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout PR branch
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. Fetch PR and default branch
       - name: Fetch PR and default branch
         run: |
           git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_branch
           git fetch origin ${{ github.event.repository.default_branch }}:default_branch
           git checkout pr_branch
 
+      # 3. Generate PR diff directly (no artifacts!)
       - name: Generate PR Diff
         run: |
           git diff default_branch...pr_branch > pr_diff.txt
 
-      - name: Upload PR Diff Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr-diff-${{ github.event.pull_request.number }}
-          path: pr_diff.txt
-
+      # 4. Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -35,36 +33,35 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Download PR Diff Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: pr-diff-${{ github.event.pull_request.number }}
-          path: ./diff
-
-
+      # 5. Base64 encode diff, wrap JSON, invoke Lambda
       - name: Invoke AWS Lambda
         id: lambda
         run: |
-          # Strip CRs and encode
-          tr -d '\r' < ./diff/pr_diff.txt | base64 -w 0 > pr_diff.b64
+          # Strip CRs and encode (prevent Base64 wrapping)
+          tr -d '\r' < pr_diff.txt | base64 -w 0 > pr_diff.b64
           
-          # Wrap into JSON
+          # Wrap into JSON for Lambda
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
 
-          cat payload.json
+          echo "------ PAYLOAD (first 200 chars) ------"
+          head -c 200 payload.json
+          echo -e "\n----------------------------------------"
+
           echo "Call Lambda"
-          
-          # Invoke Lambda
           aws lambda invoke \
             --function-name aws-pr-review \
             --payload file://payload.json \
             response.json
-
           echo "Finish Call"
-          # Save result to GitHub output
-          echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
 
+          # Output result safely (multiline-safe)
+          {
+            echo "result<<EOF"
+            cat response.json
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
+      # 6. Post result to PR
       - name: Post PR Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
