@@ -38,7 +38,7 @@ jobs:
         id: lambda
         run: |
           # Strip CRs and encode (prevent Base64 wrapping)
-          tr -d '\r' < pr_diff.txt | base64 -w 0 > pr_diff.b64
+          cat pr_diff.txt | base64 -w 0 > pr_diff.b64
           
           # Wrap into JSON for Lambda
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
