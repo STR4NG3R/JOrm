@@ -51,6 +51,7 @@ jobs:
           # Wrap into JSON
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
 
+          cat payload.json
           echo "Call Lambda"
           
           # Invoke Lambda
