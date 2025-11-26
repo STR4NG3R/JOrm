@@ -47,7 +47,7 @@ jobs:
         run: |
           # Strip CRs and encode          
           base64 -w0 ./diff/pr_diff.txt | jq -Rs '{diff_base64: .}' > payload.json
-
+          cat payload.json
           echo "Call Lambda"
           # Invoke Lambda
           aws lambda invoke \
