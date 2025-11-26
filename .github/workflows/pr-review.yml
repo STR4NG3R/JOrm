@@ -47,18 +47,18 @@ jobs:
         run: |
           # Strip CRs and encode
           tr -d '\r' < ./diff/pr_diff.txt | base64 -w 0 > pr_diff.b64
-
-          cat pr_diff.b64
           
           # Wrap into JSON
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
 
           echo "Call Lambda"
+          
           # Invoke Lambda
           aws lambda invoke \
-            --function-name pr-reviewer \
+            --function-name aws-pr-review \
             --payload file://payload.json \
             response.json
+
           echo "Finish Call"
           # Save result to GitHub output
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
