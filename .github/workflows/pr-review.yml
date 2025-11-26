@@ -43,8 +43,8 @@ jobs:
           # Wrap into JSON for Lambda
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
 
-          echo "------ PAYLOAD (first 200 chars) ------"
-          head -c 200 payload.json
+          echo "------ PAYLOAD ------"
+          cat payload.json
           echo -e "\n----------------------------------------"
 
           echo "Call Lambda"
