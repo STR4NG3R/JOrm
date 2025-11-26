@@ -52,7 +52,7 @@ jobs:
         id: lambda
         run: |
           DIFF=$(cat ./diff/pr_diff.txt)
-          PAYLOAD=$(jq -n --arg diff "$DIFF" '{"diff": $diff}')
+          PAYLOAD=$(jq -n --arg diff "$DIFF" '{"diff_base64": $diff}')
 
           aws lambda invoke \
             --function-name pr-reviewer \
