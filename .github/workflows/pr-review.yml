@@ -60,7 +60,6 @@ jobs:
             response.json
 
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
-
       # 8️⃣ Post PR comment with Lambda review
       - name: Post PR Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
