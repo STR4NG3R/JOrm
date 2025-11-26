@@ -58,7 +58,6 @@ jobs:
             --payload file://payload.json \
             response.json
           echo "Finish Call"
-
           # Save result to GitHub output
           echo "result=$(cat response.json)" >> $GITHUB_OUTPUT
 
