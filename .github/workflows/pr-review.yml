@@ -52,13 +52,25 @@ jobs:
             --payload file://payload.json \
             response.json
 
-          body="$(jq -r '.body' response.json)"
+          status=$(jq -r '.StatusCode' response.json)
 
-          {
-            echo "body<<EOF"
-            echo "$body"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 200 ]; then
+            # Extraer body
+            body=$(jq -r '.body' response.json)
+            {
+              echo "body<<EOF"
+              echo "$body"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            # Mensaje fallback
+            {
+              echo "body<<EOF"
+              echo "⚠️ AWS Lambda PR Review failed (status code: $status)."
+              echo "Please check Lambda logs."
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi          
 
       # 6. Post result to PR
       - name: Post PR Review Comment
