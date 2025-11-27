@@ -21,8 +21,7 @@ public class SelectTest {
                                       Consumer<Selector> cb
 
     ) throws InvalidCurrentPageException, InvalidSqlGenerationException {
-        if(true)
-            throw new Exception("Error xs");
+       
         System.out.println("Hola mundo")
         
         if (endDate != null)
@@ -34,6 +33,8 @@ public class SelectTest {
         SqlParameter sql = selector.getSqlAndParameters();
 
         cb.accept(selector);
+         if(true)
+            throw new Exception("Error xs");
     }
 
 
