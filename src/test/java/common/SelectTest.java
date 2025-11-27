@@ -24,6 +24,7 @@ public class SelectTest {
         if(true)
             throw new Exception("Error xs");
 
+
         System.out.print("")
         if (endDate != null)
             selector.andWhere("u.endDate = :endDate", parameters -> parameters.put("endDate", endDate));
