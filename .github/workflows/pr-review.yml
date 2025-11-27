@@ -52,14 +52,13 @@ jobs:
             --payload file://payload.json \
             response.json
           echo "Finish Call"
+          body="$(jq -r '.body' response.json)"
 
-          # Output result safely (multiline-safe)
           {
-            echo "result<<EOF"
-            cat response.json
+            echo "body<<EOF"
+            echo "$body"
             echo "EOF"
-          } >> $GITHUB_OUTPUT
-
+          } >> "$GITHUB_OUTPUT"
       # 6. Post result to PR
       - name: Post PR Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
