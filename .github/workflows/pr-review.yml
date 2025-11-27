@@ -52,7 +52,7 @@ jobs:
             --payload file://payload.json \
             response.json
 
-          status=$(jq -r '.StatusCode' response.json)
+          status=$(jq -r '.statusCode' response.json)
 
           if [ "$status" -eq 200 ]; then
             # Extraer body
