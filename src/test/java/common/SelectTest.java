@@ -23,7 +23,8 @@ public class SelectTest {
     ) throws InvalidCurrentPageException, InvalidSqlGenerationException {
         if(true)
             throw new Exception("Error xs");
-          System.ou.println("Hola mundo")
+        System.out.println("Hola mundo")
+        
         if (endDate != null)
             selector.andWhere("u.endDate = :endDate", parameters -> parameters.put("endDate", endDate));
 
