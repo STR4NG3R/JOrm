@@ -21,6 +21,9 @@ public class SelectTest {
                                       Consumer<Selector> cb
 
     ) throws InvalidCurrentPageException, InvalidSqlGenerationException {
+        if(true)
+            throw new Exception("Error xs");
+
         if (endDate != null)
             selector.andWhere("u.endDate = :endDate", parameters -> parameters.put("endDate", endDate));
 
