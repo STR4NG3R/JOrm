@@ -62,8 +62,7 @@ jobs:
             echo "$body"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-          echo "$body"
-          cat "$GITHUB_OUTPUT"
+
       # 6. Post result to PR
       - name: Post PR Review Comment
         uses: marocchino/sticky-pull-request-comment@v2
@@ -71,4 +70,4 @@ jobs:
           message: |
             ### 🤖 AWS Lambda + Bedrock PR Review
 
-            ${{ steps.lambda.outputs.result }}
+            ${{ steps.lambda.outputs.body }}
