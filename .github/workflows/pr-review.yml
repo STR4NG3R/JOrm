@@ -46,15 +46,12 @@ jobs:
           # Wrap into JSON for Lambda
           jq -n --rawfile diff pr_diff.b64 '{diff_base64: $diff}' > payload.json
 
-          jq . payload.json
-
-          echo "Call Lambda"
           aws lambda invoke \
             --function-name aws-pr-review \
             --cli-binary-format raw-in-base64-out \
             --payload file://payload.json \
             response.json
-          echo "Finish Call"
+
           body="$(jq -r '.body' response.json)"
 
           {
