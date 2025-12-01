@@ -19,7 +19,6 @@ public class SelectTest {
     public static void testPagination(Selector selector, String startDate, String endDate,
                                       Integer page, Integer pageSize,
                                       Consumer<Selector> cb
-
     ) throws InvalidCurrentPageException, InvalidSqlGenerationException {
         if (endDate != null)
             selector.andWhere("u.endDate = :endDate", parameters -> parameters.put("endDate", endDate));
@@ -34,6 +33,11 @@ public class SelectTest {
 
 
     public static Selector baseQueryUsers(String name, String lastName, String cp) {
+
+        try {
+
+        }catch( Exception e ) {}
+
         Selector s = new Selector()
                 .select("users as u",
                         "u.id id", "u.name name", "u.email email", "u.role role",
