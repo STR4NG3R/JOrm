@@ -34,10 +34,6 @@ public class SelectTest {
 
     public static Selector baseQueryUsers(String name, String lastName, String cp) {
 
-        try {
-
-        }catch( Exception e ) {}
-
         Selector s = new Selector()
                 .select("users as u",
                         "u.id id", "u.name name", "u.email email", "u.role role",
