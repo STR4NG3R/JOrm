@@ -6,20 +6,21 @@ import io.github.str4ng3r.common.Table;
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
 import org.example.utils.JDBCUtils;
 
-import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
 
 public class CommonRunner<T> {
-    Connection connection;
     boolean withDeleted;
     boolean hardDelete;
+    static Configuration configuration;
 
+    public static void  setConfiguration(Configuration configuration) {
+        Runner.configuration = configuration;
+    }
 
     protected Selector commonSelect(Selector s) {
-        ScannerEntity.findEntities(false);
         s.setWithDeleted(withDeleted);
         if (!withDeleted) {
             List<Table> tables = s.getTables();
@@ -42,19 +43,58 @@ public class CommonRunner<T> {
         return new String[]{"", ""};
     }
 
-    protected int commonInsert(String tableName, Class<T> clazz, EntityMetaData processedEntity) throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
+    protected int commonInsert( Class<T> clazz, EntityMetaData processedEntity) throws InvalidSqlGenerationException, SQLException {
         if (processedEntity.getColumnCreatedAt() != null) {
             processedEntity.getColumns().add(processedEntity.getColumnCreatedAt());
             processedEntity.getValues().add(new Date(new java.util.Date().getTime()));
         }
+        String sql = insertStatement(clazz, processedEntity).write();
+        if (processedEntity.getColumnCreatedAt() != null) processedEntity.getValues().add(new Date(System.currentTimeMillis()));
 
-        String sql = new Insert(clazz.getSimpleName())
-                .setColumns(String.join(", ", processedEntity.getColumns()))
-                .setTable(tableName)
-                .setValues(processedEntity.getValues().toArray(new Object[0]))
-                .write();
-        PreparedStatement ps = connection.prepareStatement(sql);
+        PreparedStatement ps = configuration.getConnection().prepareStatement(sql);
         JDBCUtils.addParameters(ps, processedEntity.getValues());
         return ps.executeUpdate();
     }
+
+    Insert insertStatement(Class<T> clazz, EntityMetaData processedEntity) {
+        Insert insert = new Insert(clazz.getSimpleName())
+                .setColumns(String.join(", ", processedEntity.getColumns()))
+                .setTable(processedEntity.tableName)
+                .setValues(processedEntity.getValues().toArray(new Object[0]));
+        if (processedEntity.columnCreatedAt != null) insert.setColumns(processedEntity.columnCreatedAt);
+        return insert;
+    }
+
+    protected void commonBatchInsert(
+            EntityMetaData tableMeta,
+            Class<T> clazz,
+            List<T> data,
+            int batchSize
+    ) throws SQLException, InvalidSqlGenerationException {
+        String sql = insertStatement(clazz, tableMeta).write();
+
+        long count = 0;
+        PreparedStatement ps = configuration.getConnection().prepareStatement(sql);
+        configuration.getConnection().setAutoCommit(false);
+
+        for (T d: data) {
+            EntityMetaData e = new EntityMetaData();
+            ScannerEntity.getValuesFromEntity(d.getClass(), d, e);
+            if (tableMeta.getColumnCreatedAt() != null) e.getValues().add(new Date(System.currentTimeMillis()));
+
+            JDBCUtils.addParameters(ps, e.getValues());
+
+            ps.addBatch();
+
+            if (++count % batchSize == 0) {
+                ps.executeBatch(); // flush
+                ps.clearBatch();
+                configuration.getConnection().commit();     // commit parcial
+                // TODO: Log para metricas
+            }
+         }
+        ps.executeBatch();
+        configuration.getConnection().commit();
+    }
+
 }

@@ -64,9 +64,12 @@ public class SelectTest {
     }
 
 
-    public static Selector getFirstUser() {
+    public static Selector getUserById(int id) {
         return new Selector()
-                .select("users", "id", "name", "email", "password", "role", "updatedAt as \"updatedAt\"")
-                .where("id = :id", (p) -> p.put("id", 1));
+                .select("users",
+                        "id", "name", "email", "password",
+                        "role", "updatedAt as \"updatedAt\"", "createdAt as \"createdAt\"",
+                        "deletedAt as \"deletedAt\"")
+                .where("id = :id", (p) -> p.put("id", id));
     }
 }

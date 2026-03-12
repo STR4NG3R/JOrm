@@ -26,10 +26,10 @@ public class UserDao {
     Timestamp updatedAt;
 
     @DeletedAt
-    Date deletedAt;
+    Timestamp deletedAt;
 
     @CreatedAt
-    Date createdAt;
+    Timestamp createdAt;
 
     public String getPassword() {
         return password;
@@ -85,6 +85,18 @@ public class UserDao {
     }
 
     public UserDao() {
+    }
+
+    public Timestamp getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public Timestamp getDeletedAt() {
+        return deletedAt;
+    }
+
+    public Timestamp getCreatedAt() {
+        return createdAt;
     }
 
     @Override

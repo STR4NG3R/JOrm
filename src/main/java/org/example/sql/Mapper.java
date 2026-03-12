@@ -25,9 +25,8 @@ public class Mapper<T> {
         Class<T> clazz = validateEntity(entity);
         EntityMetaData processedEntity = new EntityMetaData();
         getTableNameFromEntity(entity, processedEntity);
-        String k = createKey(processedEntity.tableName, processedEntity.db, processedEntity.schema);
-        if (entities.containsKey(k)) processedEntity = entities.get(k);
-        else getColumnsFromEntity(clazz, processedEntity);
+        if (!entities.containsKey(clazz)) registryEntity(clazz);
+        processedEntity = entities.get(clazz);
         getValuesFromEntity(clazz, entity, processedEntity);
         return processedEntity;
     }
@@ -60,18 +59,10 @@ public class Mapper<T> {
 
             while (rs.next()) {
                 T obj = clazz.getDeclaredConstructor().newInstance();
-
                 for (int i = 1; i <= columnCount; i++) {
                     String columnName = metaData.getColumnLabel(i);
-                    String a = metaData.getColumnName(i);
-                    String b = metaData.getColumnClassName(i);
-                    if (columnName.equals("updatedat")) columnName = "updatedAt";
-
                     Object columnValue = rs.getObject(i);
-
-                    if (columnValue != null) {
-                        setFieldValue(obj, columnName, columnValue);
-                    }
+                    if (columnValue != null) setFieldValue(obj, columnName, columnValue);
                 }
                 list.add(obj);
             }
@@ -109,9 +100,8 @@ public class Mapper<T> {
 
     private void setFieldValue(T obj, String columnName, Object columnValue) {
         try {
-            if (columnName.contains(".")) {
-                loopNestedClass(obj, Arrays.asList(columnName.split("\\.")), 0, columnValue);
-            } else {
+            if (columnName.contains(".")) loopNestedClass(obj, Arrays.asList(columnName.split("\\.")), 0, columnValue);
+            else {
                 Field field = obj.getClass().getDeclaredField(columnName);
                 field.setAccessible(true);
                 field.set(obj, columnValue);
