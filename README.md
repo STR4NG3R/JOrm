@@ -428,6 +428,16 @@ Because of its **very small footprint (<80KB)** and **no dependencies**, JOrm is
 - Lightweight APIs
 
 ---
+## Why JOrm Exists
+
+JOrm was created after working on large enterprise systems where SQL queries were duplicated across many services.
+
+Adding a new column often required searching and modifying dozens of queries across the codebase.
+
+Traditional ORMs like Hibernate were not a good fit for those environments due to their complexity and heavy dependencies.
+
+JOrm was designed as a lightweight alternative that allows developers to keep full control over SQL while reducing duplication and improving maintainability.
+---
 
 # License
 
