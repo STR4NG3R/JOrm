@@ -1,12 +1,10 @@
 
-
 import common.InsertTest;
 import common.SelectTest;
 import dao.UserDao;
 import io.github.str4ng3r.common.*;
 import io.github.str4ng3r.exceptions.InvalidCurrentPageException;
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
-import org.example.sql.Configuration;
 import org.example.sql.Runner;
 import org.junit.Before;
 import org.junit.ClassRule;
@@ -50,8 +48,7 @@ public class PostgresTest {
         String initDb = Resources.toString(
                 Objects.requireNonNull(
                         PostgresTest.class.getClassLoader().getResource("mock/postgresmock.sql")),
-                Charset.defaultCharset()
-        );
+                Charset.defaultCharset());
         Connection con = getConnection();
         try {
             Statement statement = con.createStatement();
@@ -61,14 +58,11 @@ public class PostgresTest {
         }
 
         assertEquals("test", 1, 1);
-        Runner.setConfiguration(new Configuration()
-                .scanPath("dao")
-                .setConnection(getConnection()));
     }
 
     @Test
     public void selectUsersMapManual() throws SQLException, InvalidSqlGenerationException {
-        List<UserDao> list = new Runner<UserDao>()
+        List<UserDao> list = new Runner<UserDao>(getConnection())
                 .select(
                         SelectTest.baseQueryUsers("o", null, null),
                         rs -> {
@@ -77,39 +71,36 @@ public class PostgresTest {
                             } catch (SQLException e) {
                                 throw new RuntimeException(e);
                             }
-                        }
-                );
+                        });
         System.out.println(list);
     }
 
     @Test
     public void selectUsersMapper() throws SQLException, InvalidSqlGenerationException {
-        List<UserDao> list = new Runner<UserDao>()
+        List<UserDao> list = new Runner<UserDao>(getConnection())
                 .withDeleted(false)
                 .select(
                         SelectTest.baseQueryUsers("o", null, null)
-                                .setWithDeleted(false)
-                        , UserDao.class
-                );
+                                .setWithDeleted(false),
+                        UserDao.class);
     }
 
     @Test
-    public void selectUsersPaginationMapper() throws SQLException, InvalidCurrentPageException, InvalidSqlGenerationException {
-        Template<List<UserDao>> paginated = new Runner<UserDao>()
+    public void selectUsersPaginationMapper()
+            throws SQLException, InvalidCurrentPageException, InvalidSqlGenerationException {
+        Template<List<UserDao>> paginated = new Runner<UserDao>(getConnection())
                 .selectPaginated(
                         1,
                         10,
                         SelectTest.baseQueryUsers("o", null, null),
-                        UserDao.class
-                );
+                        UserDao.class);
 
         System.out.println(paginated);
     }
 
-
     @Test
     public void insert() throws SQLException, InvalidSqlGenerationException, IllegalAccessException {
-        new Runner<UserDao>()
+        new Runner<UserDao>(getConnection())
                 .insert(UserDao.class, InsertTest.generateUser());
     }
 
@@ -119,7 +110,7 @@ public class PostgresTest {
         System.out.println(user);
         assertEquals("Check original value", user.getName(), "John Doe");
 
-        new Runner<UserDao>()
+        new Runner<UserDao>(getConnection())
                 .insert(UserDao.class, InsertTest.duplicatedUserUpdate());
 
         user = getUser(false, SelectTest.getUserById(1)).get(0);
@@ -128,31 +119,29 @@ public class PostgresTest {
     }
 
     List<UserDao> getUser(boolean withDeleted, Selector s) throws SQLException, InvalidSqlGenerationException {
-        return new Runner<UserDao>()
+        return new Runner<UserDao>(getConnection())
                 .withDeleted(withDeleted)
                 .select(
                         s,
-                        UserDao.class
-                );
+                        UserDao.class);
     }
 
     void deleteCoreScenarios(boolean hardDelete) throws SQLException, InvalidSqlGenerationException {
-        new Runner<Void>()
+        new Runner<Void>(getConnection())
                 .delete(
                         new Delete()
                                 .from("users")
                                 .where("id = :id", p -> p.put("id", 1)),
-                        hardDelete
-                );
+                        hardDelete);
     }
 
     void deleteCoreScenarioEntity(UserDao user, boolean hardDelete) throws SQLException, InvalidSqlGenerationException {
-        new Runner<UserDao>()
+        new Runner<UserDao>(getConnection())
                 .delete(
                         user,
-                        hardDelete
-                );
+                        hardDelete);
     }
+
     @Test
     public void testSoftDelete() throws SQLException, InvalidSqlGenerationException {
         UserDao u2 = new UserDao();
@@ -162,22 +151,20 @@ public class PostgresTest {
         assertNotNull(user.getDeletedAt());
         assertEquals("No user found", getUser(false, SelectTest.getUserById(2)).size(), 0);
 
-
-
         deleteCoreScenarios(false);
         user = getUser(true, SelectTest.getUserById(1)).get(0);
         assertNotNull(user.getDeletedAt());
         assertEquals("No user found", getUser(false, SelectTest.getUserById(1)).size(), 0);
     }
 
-//    @Test
-//    public void testHardDelete() throws SQLException, InvalidSqlGenerationException {
-//        deleteCoreScenarios(true);
-//        assertEquals("No user found", getUser(false, SelectTest.getUserById(1)).size(), 0);
-//        assertEquals("No user found", getUser(true, SelectTest.getUserById(1)).size(), 0);
-//    }
-
-
-
+    // @Test
+    // public void testHardDelete() throws SQLException,
+    // InvalidSqlGenerationException {
+    // deleteCoreScenarios(true);
+    // assertEquals("No user found", getUser(false,
+    // SelectTest.getUserById(1)).size(), 0);
+    // assertEquals("No user found", getUser(true,
+    // SelectTest.getUserById(1)).size(), 0);
+    // }
 
 }

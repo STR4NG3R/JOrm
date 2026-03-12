@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.function.Function;
 
 public class Runner<T> extends CommonRunner {
-    public Runner() {
+
+    public Runner(Connection connection) {
+        super(connection);
         withDeleted = true;
     }
 
@@ -31,69 +33,76 @@ public class Runner<T> extends CommonRunner {
         READ_COMMITED(2),
         REPEATABLE_READ(4),
         SERIALIZABLE(8);
+
         final int isolationValue;
+
         ISOLATION(int value) {
             isolationValue = value;
         }
     }
 
     public void setTransaction(ISOLATION isolation) throws SQLException {
-        CommonRunner.configuration.connection.setTransactionIsolation(isolation.isolationValue);
+        getConnection().setTransactionIsolation(isolation.isolationValue);
     }
 
-    public List<T> select(Selector selector, Function<ResultSet, T> consumer) throws InvalidSqlGenerationException, SQLException {
+    public List<T> select(Selector selector, Function<ResultSet, T> consumer)
+            throws InvalidSqlGenerationException, SQLException {
         commonSelect(selector);
-        ResultSet rs = JDBCUtils.createResultSet(selector, CommonRunner.configuration.connection, withDeleted);
+        ResultSet rs = JDBCUtils.createResultSet(selector, getConnection(), withDeleted);
         ArrayList<T> list = new ArrayList<>();
-        while (rs.next()) list.add(consumer.apply(rs));
+        while (rs.next())
+            list.add(consumer.apply(rs));
         return list;
     }
 
     public List<T> select(Selector selector, Class<T> clazz) throws SQLException, InvalidSqlGenerationException {
         commonSelect(selector);
-        ResultSet rs = JDBCUtils.createResultSet(selector, configuration.getConnection(), withDeleted);
+        ResultSet rs = JDBCUtils.createResultSet(selector, getConnection(), withDeleted);
         Mapper<T> mapper = new Mapper<>();
         return mapper.mapFromResultSet(rs, clazz);
     }
 
-    public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector, Class<T> clazz) throws InvalidSqlGenerationException, SQLException, InvalidCurrentPageException {
+    public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector, Class<T> clazz)
+            throws InvalidSqlGenerationException, SQLException, InvalidCurrentPageException {
         commonSelect(selector);
         SqlParameter sqlParameter = selector.getSqlAndParameters();
-        int count = JDBCUtils.getCount(configuration.connection, selector, sqlParameter, withDeleted);
+        int count = JDBCUtils.getCount(getConnection(), selector, sqlParameter, withDeleted);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
-        ResultSet rs = JDBCUtils.createResultSet(selector, configuration.getConnection(), withDeleted);
+        ResultSet rs = JDBCUtils.createResultSet(selector, getConnection(), withDeleted);
         return new Template<List<T>>(sqlParameter, new Mapper<T>().mapFromResultSet(rs, clazz));
     }
 
-    public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector, Function<ResultSet, T> consumer) throws SQLException, InvalidSqlGenerationException, InvalidCurrentPageException {
+    public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector,
+            Function<ResultSet, T> consumer)
+            throws SQLException, InvalidSqlGenerationException, InvalidCurrentPageException {
         commonSelect(selector);
         SqlParameter sqlParameter = selector.getSqlAndParameters();
-        int count = JDBCUtils.getCount(configuration.getConnection(), selector, sqlParameter, withDeleted);
+        int count = JDBCUtils.getCount(getConnection(), selector, sqlParameter, withDeleted);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
-        ResultSet rs = JDBCUtils.createResultSet(selector, configuration.getConnection(), withDeleted);
+        ResultSet rs = JDBCUtils.createResultSet(selector, getConnection(), withDeleted);
         ArrayList<T> list = new ArrayList<>();
-        while (rs.next()) list.add(consumer.apply(rs));
+        while (rs.next())
+            list.add(consumer.apply(rs));
         return new Template<>(sqlParameter, list);
     }
 
-    protected int commonUpdate(Update update, EntityMetaData processedEntity) throws InvalidSqlGenerationException, SQLException {
+    protected int commonUpdate(Update update, EntityMetaData processedEntity)
+            throws InvalidSqlGenerationException, SQLException {
         for (int i = 0; i < processedEntity.getColumns().size(); i++) {
             Object value = processedEntity.getValues().get(i);
             if (value != null) {
                 String column = processedEntity.getColumns().get(i);
-                update.setColumnsValuesToUpdate((cv) ->
-                        cv.put(column, value));
+                update.setColumnsValuesToUpdate((cv) -> cv.put(column, value));
             }
         }
 
         if (processedEntity.getColumnUpdatedAt() != null) {
             update.setColumnsValuesToUpdate(
-                    p -> p.put(processedEntity.getColumnUpdatedAt(), new Date(new java.util.Date().getTime()))
-            );
+                    p -> p.put(processedEntity.getColumnUpdatedAt(), new Date(new java.util.Date().getTime())));
         }
 
         SqlParameter sqlParameter = update.getSqlAndParameters();
-        PreparedStatement ps = configuration.getConnection().prepareStatement(sqlParameter.sql);
+        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
         JDBCUtils.addParameters(ps, sqlParameter.getListParameters());
         return ps.executeUpdate();
     }
@@ -101,12 +110,13 @@ public class Runner<T> extends CommonRunner {
     public int delete(Delete delete, boolean hardDelete) throws InvalidSqlGenerationException, SQLException {
         if (!hardDelete) {
             EntityMetaData found = ScannerEntity.getEntityFromTableName(delete.getTables().get(0));
-            if (found != null && found.columnDeletedAt != null) delete.setDeletedAtColumn(found.columnDeletedAt);
+            if (found != null && found.columnDeletedAt != null)
+                delete.setDeletedAtColumn(found.columnDeletedAt);
         }
 
         delete.setHardDelete(hardDelete);
         SqlParameter sqlParameter = delete.getSqlAndParameters();
-        PreparedStatement ps = configuration.getConnection().prepareStatement(sqlParameter.sql);
+        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
         JDBCUtils.addParameters(ps, sqlParameter.getListParameters());
         return ps.executeUpdate();
     }
@@ -117,7 +127,8 @@ public class Runner<T> extends CommonRunner {
 
         Delete delete = new Delete();
         delete.from(ScannerEntity.createKey(processedEntity.tableName, processedEntity.db, processedEntity.schema));
-        delete.where(processedEntity.columnId + " = :id", (p) -> p.put(processedEntity.columnId, processedEntity.columnIdValue));
+        delete.where(processedEntity.columnId + " = :id",
+                (p) -> p.put(processedEntity.columnId, processedEntity.columnIdValue));
         if (!hardDelete) {
             if (processedEntity.columnDeletedAt != null)
                 delete.setDeletedAtColumn(processedEntity.columnDeletedAt);
@@ -125,33 +136,31 @@ public class Runner<T> extends CommonRunner {
         delete.setHardDelete(hardDelete);
 
         SqlParameter sqlParameter = delete.getSqlAndParameters();
-        PreparedStatement ps = configuration.getConnection().prepareStatement(sqlParameter.sql);
+        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
         JDBCUtils.addParameters(ps, sqlParameter.getListParameters());
         return ps.executeUpdate();
     }
 
-    public int insert(Class<T> clazz, T data) throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
+    public int insert(Class<T> clazz, T data)
+            throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
         Mapper<T> mapper = new Mapper<>();
         EntityMetaData processedEntity = mapper.mapFromEntity(data);
         String columns = String.join(",", processedEntity.getColumns());
 
         if (processedEntity.getColumnIdValue() != null) {
             List<T> result = select(new Selector()
-                            .select(
-                                    processedEntity.getTableName(),
-                                    columns
-                            ).where(
-                                    processedEntity.getColumnId() + " = :id",
-                                    (p) -> p.put("id", processedEntity.getColumnIdValue())
-                            )
-                    , clazz
-            );
+                    .select(
+                            processedEntity.getTableName(),
+                            columns)
+                    .where(
+                            processedEntity.getColumnId() + " = :id",
+                            (p) -> p.put("id", processedEntity.getColumnIdValue())),
+                    clazz);
             if (!result.isEmpty()) {
                 Update u = new Update().from(processedEntity.getTableName())
                         .where(
                                 processedEntity.getColumnId() + " = :id",
-                                (p) -> p.put("id", processedEntity.getColumnIdValue())
-                        );
+                                (p) -> p.put("id", processedEntity.getColumnIdValue()));
                 return commonUpdate(u, processedEntity);
             }
         }
@@ -159,7 +168,8 @@ public class Runner<T> extends CommonRunner {
         return commonInsert(clazz, processedEntity);
     }
 
-    public void insert(Class<T> clazz, List<T> data, int batchSize) throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
+    public void insert(Class<T> clazz, List<T> data, int batchSize)
+            throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
         Mapper<T> mapper = new Mapper<>();
         EntityMetaData processedEntity = mapper.mapFromEntity(data.get(0));
         commonBatchInsert(processedEntity, clazz, data, batchSize);
