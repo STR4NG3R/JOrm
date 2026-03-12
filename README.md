@@ -24,6 +24,10 @@ JOrm weighs **less than 80KB** and has **no external dependencies**, making it i
 - Pagination support
 - Soft Delete support
 - Works well in **serverless environments**
+- No runtime dependencies
+- JDBC-based
+- Optional reflection-free mapping
+- Integration tested with PostgreSQL via Testcontainers
 
 ---
 
@@ -427,6 +431,16 @@ Because of its **very small footprint (<80KB)** and **no dependencies**, JOrm is
 - High-performance microservices
 - Lightweight APIs
 
+---
+## Testing
+
+JOrm includes integration tests powered by Testcontainers.
+
+Each test spins up a real PostgreSQL database inside a Docker container, ensuring that
+queries, mappings, and transactions are validated against an actual database engine.
+
+This guarantees that behavior in tests matches real-world environments without requiring
+developers to install or configure PostgreSQL locally.
 ---
 ## Why JOrm Exists
 
