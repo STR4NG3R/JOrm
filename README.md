@@ -179,25 +179,142 @@ This structure allows easy integration with APIs and UI pagination components.
 
 ---
 
-# INSERT Example
+# Insert / Update (Upsert Behavior)
+
+JOrm supports **upsert-style operations** using the `insert()` method.
+
+If the entity contains a non-null `@Id`, JOrm will:
+
+1. Perform a lookup to determine if the record exists
+2. If the record exists → perform an **UPDATE**
+3. If the record does not exist → perform an **INSERT**
+
+Example:
 
 ```java
 UserDao user = new UserDao();
-user.setEmail("user@email.com");
-user.setRole("Admin");
-user.setName("Pablo");
-user.setPassword("secret");
+user.setId(1);
+user.setName("Updated User Name");
 
-new Runner<UserDao>(connection)
+new Runner<UserDao>()
         .insert(UserDao.class, user);
+```
+
+Behavior:
+
+If the record exists:
+
+```sql
+UPDATE users
+SET name = ?
+WHERE id = ?
+```
+
+If the record does not exist:
+
+```sql
+INSERT INTO users (id, name)
+VALUES (?, ?)
+```
+
+This allows a single operation to handle both **create and update workflows**.
+
+---
+
+# Dynamic Query Builder Example
+
+JOrm's Query Builder allows you to dynamically construct SQL queries based on optional parameters.
+
+Example with conditional filters and joins:
+
+```java
+public static Selector baseQueryUsers(String name, String lastName, String cp) {
+
+    Selector selector = new Selector()
+            .select(
+                    "users as u",
+                    "u.id id",
+                    "u.name name",
+                    "u.email email",
+                    "u.role role"
+            )
+            .join(Join.JOIN.LEFT, "userAddress as ua", "u.id = ua.userId")
+            .join(Join.JOIN.INNER, "addresses as a", "a.id = ua.addressId");
+
+    if (name != null) {
+        selector.andWhere(
+                "u.name LIKE CONCAT('%', :name, '%')",
+                p -> p.put("name", name)
+        );
+    }
+
+    if (lastName != null) {
+        selector.andWhere(
+                "u.lastName LIKE CONCAT('%', :lastName, '%')",
+                p -> p.put("lastName", lastName)
+        );
+    }
+
+    if (cp != null) {
+        selector.andWhere(
+                "a.cp = :cp",
+                p -> p.put("cp", cp)
+        );
+    }
+
+    return selector;
+}
+```
+
+Example usage:
+
+```java
+Selector selector = baseQueryUsers("John", null, "64000");
+
+List<UserDao> users = new Runner<UserDao>()
+        .select(selector, UserDao.class);
 ```
 
 ---
 
+# Benefits of Dynamic Query Building
+
+Using dynamic query construction provides several advantages:
+
+### Flexible Filtering
+
+Optional parameters allow you to build queries dynamically without writing multiple SQL variants.
+
+Example:
+
+- Only filter by name
+- Filter by name and postal code
+- Filter by postal code only
+
+All using the same query builder.
+
+---
+
+### Cleaner Code
+
+Instead of concatenating SQL strings manually, conditions are added in a structured way.
+
+---
+
+### Safer Parameter Handling
+
+All parameters are bound using named parameters, reducing the risk of SQL injection.
+
+---
+
+### Reusable Query Definitions
+
+Base queries can be reused across different services or APIs and extended with additional conditions when needed.
+---
+
 # UPDATE Example
 
-Currently, updates are performed using the Query Builder.
-
+If you need more control over your updates you can use query builders to perform updates
 ```java
 new Runner<Void>(connection)
         .update(
