@@ -77,18 +77,6 @@ public class UserDao {
 
 ---
 
-# Configuration
-
-```java
-Runner.setConfiguration(
-    new Configuration()
-        .scanPath("dao")
-        .setConnection(connection)
-);
-```
-
----
-
 # SELECT Example
 
 Using a query builder:
@@ -105,7 +93,7 @@ Selector selector = new Selector()
                 "deletedAt as \"deletedAt\"")
         .where("id = :id", p -> p.put("id", 1));
 
-List<UserDao> users = new Runner<UserDao>()
+List<UserDao> users = new Runner<UserDao>(connection)
         .select(selector, UserDao.class);
 ```
 
@@ -116,7 +104,7 @@ List<UserDao> users = new Runner<UserDao>()
 Manual mapping is also supported if you prefer full control.
 
 ```java
-List<UserDao> users = new Runner<UserDao>()
+List<UserDao> users = new Runner<UserDao>(connection)
         .select(
                 selector,
                 rs -> new UserDao(
@@ -134,7 +122,7 @@ List<UserDao> users = new Runner<UserDao>()
 JOrm supports paginated queries using `selectPaginated`.
 
 ```java
-Template<List<UserDao>> paginated = new Runner<UserDao>()
+Template<List<UserDao>> paginated = new Runner<UserDao>(connection)
         .selectPaginated(
                 1,
                 10,
@@ -200,7 +188,7 @@ user.setRole("Admin");
 user.setName("Pablo");
 user.setPassword("secret");
 
-new Runner<UserDao>()
+new Runner<UserDao>(connection)
         .insert(UserDao.class, user);
 ```
 
@@ -211,7 +199,7 @@ new Runner<UserDao>()
 Currently, updates are performed using the Query Builder.
 
 ```java
-new Runner<Void>()
+new Runner<Void>(connection)
         .update(
                 new Update()
                         .table("users")
@@ -225,7 +213,7 @@ new Runner<Void>()
 # DELETE Example (Query Builder)
 
 ```java
-new Runner<Void>()
+new Runner<Void>(connection)
         .delete(
                 new Delete()
                         .from("users")
@@ -244,7 +232,7 @@ The second parameter determines whether the delete is **soft** or **hard**.
 UserDao user = new UserDao();
 user.setId(1);
 
-new Runner<UserDao>()
+new Runner<UserDao>(connection)
         .delete(user, false);
 ```
 
