@@ -11,27 +11,40 @@ import java.sql.SQLException;
 import java.util.List;
 
 public class JDBCUtils{
-    public static void addParameters(PreparedStatement ps, List<Object> parameters) throws SQLException {
+
+    JormLogger jormLogger;
+
+    public JDBCUtils(JormLogger jormLogger) {
+        this.jormLogger = jormLogger;
+    }
+
+    public void addParameters(PreparedStatement ps, List<Object> parameters) throws SQLException {
         ps.clearParameters();
         for (int i = 0; i < parameters.size(); i++) ps.setObject(i + 1, parameters.get(i));
     }
 
-    public static int getCount(Connection connection, Selector s, SqlParameter sqlParameter, boolean withDeleted) throws SQLException {
-        // s.withDeleted(withDeleted);
+    public int getCount(Connection connection, Selector s, SqlParameter sqlParameter, boolean withDeleted, String alias) throws SQLException {
+        this.jormLogger.info(sqlParameter.toString());
+        this.jormLogger.startRecord("count-" + alias, sqlParameter.sql);
         PreparedStatement ps = connection.prepareStatement(s.getCount(sqlParameter.sql));
         addParameters(ps, sqlParameter.getListParameters());
         ResultSet rs = ps.executeQuery();
         if (rs.next())
             return rs.getInt(1);
+        this.jormLogger.endRecord(alias);
         return 0;
     }
 
 
-    public static ResultSet createResultSet(Selector selector, Connection connection, boolean withDeleted) throws SQLException, InvalidSqlGenerationException {
+    public ResultSet createResultSet(Selector selector, Connection connection, boolean withDeleted, String alias) throws SQLException, InvalidSqlGenerationException {
         //selector.setWithDeleted(withDeleted);
         SqlParameter sqlParameter = selector.getSqlAndParameters();
+        this.jormLogger.info(sqlParameter.toString());
+        this.jormLogger.startRecord(alias, sqlParameter.sql);
         PreparedStatement ps = connection.prepareStatement(sqlParameter.sql);
-        JDBCUtils.addParameters(ps, sqlParameter.getListParameters());
-        return ps.executeQuery();
+        addParameters(ps, sqlParameter.getListParameters());
+        ResultSet rs = ps.executeQuery();
+        jormLogger.endRecord(alias);
+        return rs;
     }
 }

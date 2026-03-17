@@ -2,6 +2,7 @@ package org.example.sql;
 
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
 import org.example.*;
+import org.example.utils.JormLogger;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -12,6 +13,16 @@ import java.util.*;
 import static org.example.sql.ScannerEntity.*;
 
 public class Mapper<T> {
+
+    JormLogger jormLogger;
+    String alias;
+
+    public Mapper(JormLogger jormLogger, String alias) {
+        this.jormLogger = jormLogger;
+        this.alias = alias == null? "": alias;
+
+    }
+
     Class<T> validateEntity(T entity) throws InvalidSqlGenerationException {
         Class<T> clazz = (Class<T>) entity.getClass();
         if (!clazz.isAnnotationPresent(Entity.class)) {
@@ -22,12 +33,14 @@ public class Mapper<T> {
 
 
     public EntityMetaData mapFromEntity(T entity) throws InvalidSqlGenerationException {
+        jormLogger.startRecord("map-" + alias );
         Class<T> clazz = validateEntity(entity);
         EntityMetaData processedEntity = new EntityMetaData();
         getTableNameFromEntity(entity, processedEntity);
-        if (!entities.containsKey(clazz)) registryEntity(clazz);
-        processedEntity = entities.get(clazz);
+        if (!entitiesRegistry.containsKey(clazz)) registryEntity(clazz);
+        processedEntity = entitiesRegistry.get(clazz);
         getValuesFromEntity(clazz, entity, processedEntity);
+        jormLogger.endRecord("map-" + alias);
         return processedEntity;
     }
 
@@ -36,6 +49,7 @@ public class Mapper<T> {
     }
 
     public T mapFromHashMap(Map<String, Object> data, Class<T> clazz) {
+        jormLogger.startRecord("map-" + alias);
         try {
             T obj = clazz.getDeclaredConstructor().newInstance();
             for (Map.Entry<String, Object> entry : data.entrySet()) {
@@ -46,12 +60,15 @@ public class Mapper<T> {
             }
             return obj;
         } catch (Exception e) {
-            e.printStackTrace();
+            jormLogger.error("Unable to map from hashmap", e);
             return null;
+        } finally {
+            jormLogger.endRecord("map-" + alias);
         }
     }
 
     public List<T> mapFromResultSet(ResultSet rs, Class<T> clazz) {
+        jormLogger.startRecord("map-" + alias);
         List<T> list = new ArrayList<>();
         try {
             ResultSetMetaData metaData = rs.getMetaData();
@@ -67,8 +84,9 @@ public class Mapper<T> {
                 list.add(obj);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            jormLogger.error("Unable to map manually", e);
         }
+        jormLogger.endRecord("map-"+alias);
         return list;
     }
 
@@ -108,9 +126,9 @@ public class Mapper<T> {
             }
         } catch (NoSuchFieldException ignored) {
             // Log ignored fields for debugging
-            System.out.println("⚠️ Warning: Field '" + columnName + "' not found in " + obj.getClass().getSimpleName());
+            jormLogger.warn("⚠️ Warning: Field '" + columnName + "' not found in " + obj.getClass().getSimpleName());
         } catch (Exception e) {
-            e.printStackTrace();
+            jormLogger.error("Unable to set value on mapping", e);
         }
     }
 

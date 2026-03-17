@@ -3,7 +3,6 @@ package org.example.sql;
 import io.github.str4ng3r.common.*;
 import io.github.str4ng3r.exceptions.InvalidCurrentPageException;
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
-import org.example.utils.JDBCUtils;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -12,9 +11,22 @@ import java.util.function.Function;
 
 public class Runner<T> extends CommonRunner {
 
+    String alias;
+
     public Runner(Connection connection) {
         super(connection);
         withDeleted = true;
+    }
+
+    public Runner<T> enableMetrics(String alias) {
+        this.alias = alias;
+        jormLogger.setEnableMetrics(true);
+        return this;
+    }
+
+    public Runner<T> enableLogs() {
+        jormLogger.setEnable(true);
+        return this;
     }
 
     public Runner<T> hardDelete(boolean hardDelete) {
@@ -48,7 +60,8 @@ public class Runner<T> extends CommonRunner {
     public List<T> select(Selector selector, Function<ResultSet, T> consumer)
             throws InvalidSqlGenerationException, SQLException {
         commonSelect(selector);
-        ResultSet rs = JDBCUtils.createResultSet(selector, getConnection(), withDeleted);
+        jormLogger.startRecord(alias);
+        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), withDeleted, alias);
         ArrayList<T> list = new ArrayList<>();
         while (rs.next())
             list.add(consumer.apply(rs));
@@ -57,8 +70,8 @@ public class Runner<T> extends CommonRunner {
 
     public List<T> select(Selector selector, Class<T> clazz) throws SQLException, InvalidSqlGenerationException {
         commonSelect(selector);
-        ResultSet rs = JDBCUtils.createResultSet(selector, getConnection(), withDeleted);
-        Mapper<T> mapper = new Mapper<>();
+        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), withDeleted, alias);
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
         return mapper.mapFromResultSet(rs, clazz);
     }
 
@@ -66,10 +79,10 @@ public class Runner<T> extends CommonRunner {
             throws InvalidSqlGenerationException, SQLException, InvalidCurrentPageException {
         commonSelect(selector);
         SqlParameter sqlParameter = selector.getSqlAndParameters();
-        int count = JDBCUtils.getCount(getConnection(), selector, sqlParameter, withDeleted);
+        int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, withDeleted, alias);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
-        ResultSet rs = JDBCUtils.createResultSet(selector, getConnection(), withDeleted);
-        return new Template<List<T>>(sqlParameter, new Mapper<T>().mapFromResultSet(rs, clazz));
+        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), withDeleted, alias);
+        return new Template<List<T>>(sqlParameter, new Mapper<T>(jormLogger, alias).mapFromResultSet(rs, clazz));
     }
 
     public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector,
@@ -77,9 +90,9 @@ public class Runner<T> extends CommonRunner {
             throws SQLException, InvalidSqlGenerationException, InvalidCurrentPageException {
         commonSelect(selector);
         SqlParameter sqlParameter = selector.getSqlAndParameters();
-        int count = JDBCUtils.getCount(getConnection(), selector, sqlParameter, withDeleted);
+        int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, withDeleted, alias);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
-        ResultSet rs = JDBCUtils.createResultSet(selector, getConnection(), withDeleted);
+        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), withDeleted, alias);
         ArrayList<T> list = new ArrayList<>();
         while (rs.next())
             list.add(consumer.apply(rs));
@@ -103,7 +116,7 @@ public class Runner<T> extends CommonRunner {
 
         SqlParameter sqlParameter = update.getSqlAndParameters();
         PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
-        JDBCUtils.addParameters(ps, sqlParameter.getListParameters());
+        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
         return ps.executeUpdate();
     }
 
@@ -117,12 +130,12 @@ public class Runner<T> extends CommonRunner {
         delete.setHardDelete(hardDelete);
         SqlParameter sqlParameter = delete.getSqlAndParameters();
         PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
-        JDBCUtils.addParameters(ps, sqlParameter.getListParameters());
+        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
         return ps.executeUpdate();
     }
 
     public int delete(T data, boolean hardDelete) throws InvalidSqlGenerationException, SQLException {
-        Mapper<T> mapper = new Mapper<>();
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
         EntityMetaData processedEntity = mapper.mapFromEntity(data);
 
         Delete delete = new Delete();
@@ -136,14 +149,15 @@ public class Runner<T> extends CommonRunner {
         delete.setHardDelete(hardDelete);
 
         SqlParameter sqlParameter = delete.getSqlAndParameters();
+        jormLogger.info(sqlParameter.toString());
         PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
-        JDBCUtils.addParameters(ps, sqlParameter.getListParameters());
+        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
         return ps.executeUpdate();
     }
 
     public int insert(Class<T> clazz, T data)
             throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
-        Mapper<T> mapper = new Mapper<>();
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
         EntityMetaData processedEntity = mapper.mapFromEntity(data);
         String columns = String.join(",", processedEntity.getColumns());
 
@@ -170,7 +184,7 @@ public class Runner<T> extends CommonRunner {
 
     public void insert(Class<T> clazz, List<T> data, int batchSize)
             throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
-        Mapper<T> mapper = new Mapper<>();
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
         EntityMetaData processedEntity = mapper.mapFromEntity(data.get(0));
         commonBatchInsert(processedEntity, clazz, data, batchSize);
     }

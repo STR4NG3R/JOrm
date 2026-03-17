@@ -5,6 +5,7 @@ import io.github.str4ng3r.common.Selector;
 import io.github.str4ng3r.common.Table;
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
 import org.example.utils.JDBCUtils;
+import org.example.utils.JormLogger;
 
 import java.sql.Connection;
 import java.sql.Date;
@@ -16,9 +17,13 @@ public class CommonRunner<T> {
     boolean withDeleted;
     boolean hardDelete;
     Connection connection;
+    JormLogger jormLogger = new JormLogger();
+    JDBCUtils jdbcUtils = new JDBCUtils(jormLogger);
 
     public CommonRunner(Connection connection) {
         this.connection = connection;
+        jormLogger.setEnable(false);
+        jormLogger.setEnableMetrics(false);
     }
 
     Connection getConnection() {
@@ -32,11 +37,9 @@ public class CommonRunner<T> {
             for (Table e : tables) {
                 String[] tableNameAlias = getAliasTable(e.name);
                 String k = ScannerEntity.createKey(tableNameAlias[0], e.database, e.schema);
-                if (ScannerEntity.entities.containsKey(k)) {
-                    EntityMetaData finded = ScannerEntity.entities.get(k);
-                    if (finded != null)
-                        e.deletedAtColumn = finded.columnDeletedAt;
-                }
+                EntityMetaData found = ScannerEntity.entitiesRegistryByKey.get(k);
+                if (found != null)
+                    e.deletedAtColumn = found.columnDeletedAt;
             }
         }
         return s;
@@ -60,7 +63,7 @@ public class CommonRunner<T> {
             processedEntity.getValues().add(new Date(System.currentTimeMillis()));
 
         PreparedStatement ps = getConnection().prepareStatement(sql);
-        JDBCUtils.addParameters(ps, processedEntity.getValues());
+        jdbcUtils.addParameters(ps, processedEntity.getValues());
         return ps.executeUpdate();
     }
 
@@ -91,7 +94,7 @@ public class CommonRunner<T> {
             if (tableMeta.getColumnCreatedAt() != null)
                 e.getValues().add(new Date(System.currentTimeMillis()));
 
-            JDBCUtils.addParameters(ps, e.getValues());
+            jdbcUtils.addParameters(ps, e.getValues());
 
             ps.addBatch();
 
