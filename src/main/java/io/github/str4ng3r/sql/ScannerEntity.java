@@ -1,7 +1,7 @@
-package org.example.sql;
+package io.github.str4ng3r.sql;
 
+import io.github.str4ng3r.*;
 import io.github.str4ng3r.common.Table;
-import org.example.*;
 
 import java.lang.reflect.Field;
 import java.util.*;

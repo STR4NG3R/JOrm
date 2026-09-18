@@ -1,12 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
-    <artifactId>JOrm</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <!-- 🔥 IMPORTANTE: cambia esto -->
+    <groupId>io.github.STR4NG3R</groupId>
+    <artifactId>jorm</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>JOrm</name>
+    <description>Lightweight ORM for Java</description>
+    <url>https://github.com/STR4NG3R/jorm</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>STR4NG3R</id>
+            <name>Pablo Eduardo Martinez Solis</name>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/STR4NG3R/jorm.git</connection>
+        <developerConnection>scm:git:ssh://github.com/STR4NG3R/jorm.git</developerConnection>
+        <url>https://github.com/STR4NG3R/jorm</url>
+    </scm>
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
@@ -14,23 +42,17 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
-    <repositories>
-        <repository>
-            <id>jitpack.io</id>
-            <url>https://jitpack.io</url>
-        </repository>
-    </repositories>
-
+    <!-- ❌ QUITA systemPath (no permitido) -->
     <dependencies>
+
+        <!-- Si puedes publícalo en Maven o usa jitpack -->
         <dependency>
             <groupId>io.github.str4ng3r</groupId>
             <artifactId>querybuilder</artifactId>
             <version>1.0.2</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/src/main/resources/QueryBuilder-1.0.2-SNAPSHOT.jar</systemPath>
         </dependency>
 
-        <!-- Testcontainers Core -->
+        <!-- TESTS -->
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers</artifactId>
@@ -38,7 +60,6 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Database Specific Module (PostgreSQL in this case) -->
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
@@ -46,12 +67,82 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- PostgreSQL JDBC Driver (if needed for the tests) -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.2</version> <!-- Replace with the latest version -->
+            <version>42.7.2</version>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
+
+    <distributionManagement>
+        <repository>
+            <id>ossrh</id>
+            <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository>
+    </distributionManagement>
+
+    <build>
+        <plugins>
+
+            <!-- 🔐 Firmado obligatorio -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Sources -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Javadoc -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 🚀 Auto release -->
+            <plugin>
+                <groupId>org.sonatype.plugins</groupId>
+                <artifactId>nexus-staging-maven-plugin</artifactId>
+                <version>1.6.13</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <serverId>ossrh</serverId>
+                    <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
+                    <autoReleaseAfterClose>true</autoReleaseAfterClose>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
 </project>

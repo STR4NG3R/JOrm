@@ -21,46 +21,57 @@ CREATE TABLE addresses (
 );
 
 CREATE TABLE userAddress (
-    userId INT REFERENCES users(id),     -- Foreign key to users table
-    addressId INT REFERENCES addresses(id) -- Foreign key to addresses table
+    userId INT,
+    addressId INT,
+    PRIMARY KEY (userId, addressId),
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (addressId) REFERENCES addresses(id) ON DELETE CASCADE
 );
 
 CREATE TABLE shops (
     id SERIAL PRIMARY KEY,                -- Unique identifier for each shop (auto-increment)
     name VARCHAR(150) NOT NULL,            -- Name of the shop
-    ownerId INT NOT NULL REFERENCES users(id),  -- Foreign key to link to the owner (user)
+    ownerId INT NOT NULL,  -- Foreign key to link to the owner (user)
     description TEXT,                     -- Optional description of the shop
     address VARCHAR(255),                  -- Shop's address
     phoneNumber VARCHAR(20),              -- Contact phone number
     email VARCHAR(150) UNIQUE,            -- Contact email (must be unique)
     createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Timestamp for record creation
-    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- Timestamp for last update
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Timestamp for last update
+    FOREIGN KEY (ownerId) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE userShop (
-    userId INT REFERENCES users(id),     -- Foreign key to users table
-    shopId INT REFERENCES shops(id)      -- Foreign key to shops table
+    userId INT NOT NULL,
+    shopId INT NOT NULL,
+    PRIMARY KEY (userId, shopId),
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE
 );
 
 CREATE TABLE products (
-    id SERIAL PRIMARY KEY,               -- Unique identifier for each product (auto-increment)
-    shopId INT NOT NULL REFERENCES shops(id),  -- Foreign key to link the product to a shop
-    name VARCHAR(150) NOT NULL,            -- Name of the product
-    description TEXT,                     -- Optional description of the product
-    price DECIMAL(10, 2) NOT NULL,         -- Price of the product (supports up to 99999999.99)
-    stock INT DEFAULT 0,                  -- Number of items in stock
-    category VARCHAR(100),                -- Category of the product
-    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Timestamp for record creation
-    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- Timestamp for last update
+    id SERIAL PRIMARY KEY,
+    shopId INT,
+    name VARCHAR(150) NOT NULL,
+    description TEXT,
+    price DECIMAL(10, 2) NOT NULL,
+    stock INT DEFAULT 0,
+    category VARCHAR(100),
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (shopId)
+        REFERENCES shops(id)
+        ON DELETE SET NULL
 );
 
 CREATE TABLE sales (
     id SERIAL PRIMARY KEY,               -- Unique identifier for each sale (auto-increment)
     productId INT NOT NULL REFERENCES products(id), -- Foreign key linking to the Products table
-    userId INT NOT NULL REFERENCES users(id),      -- Foreign key linking to the Users table (buyer)
+    userId INT NOT NULL,      -- Foreign key linking to the Users table (buyer)
     quantity INT NOT NULL,                -- Quantity of products sold
     totalPrice DECIMAL(10, 2) NOT NULL,   -- Total price for the sale
-    saleDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- Timestamp for when the sale occurred
+    saleDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Timestamp for when the sale occurred
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
 );
 
 INSERT INTO Users (name, email, password, role, createdAt, updatedAt) VALUES

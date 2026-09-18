@@ -1,14 +1,11 @@
-package org.example;
+package io.github.str4ng3r;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Target(ElementType.TYPE)
+@Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Entity {
-    String name() default "";
-    String schema() default "";
-    String database() default "";
+public @interface Id {
 }

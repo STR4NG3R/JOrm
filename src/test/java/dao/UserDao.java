@@ -1,6 +1,6 @@
 package dao;
 
-import org.example.*;
+import io.github.str4ng3r.*;
 
 import java.sql.Timestamp;
 

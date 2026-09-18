@@ -1,4 +1,4 @@
-package org.example.utils;
+package io.github.str4ng3r.utils;
 
 import io.github.str4ng3r.common.Selector;
 import io.github.str4ng3r.common.SqlParameter;
@@ -23,7 +23,7 @@ public class JDBCUtils{
         for (int i = 0; i < parameters.size(); i++) ps.setObject(i + 1, parameters.get(i));
     }
 
-    public int getCount(Connection connection, Selector s, SqlParameter sqlParameter, boolean withDeleted, String alias) throws SQLException {
+    public int getCount(Connection connection, Selector s, SqlParameter sqlParameter, String alias) throws SQLException {
         this.jormLogger.info(sqlParameter.toString());
         this.jormLogger.startRecord("count-" + alias, sqlParameter.sql);
         PreparedStatement ps = connection.prepareStatement(s.getCount(sqlParameter.sql));
@@ -36,12 +36,12 @@ public class JDBCUtils{
     }
 
 
-    public ResultSet createResultSet(Selector selector, Connection connection, boolean withDeleted, String alias) throws SQLException, InvalidSqlGenerationException {
-        //selector.setWithDeleted(withDeleted);
+    public ResultSet createResultSet(Selector selector, Connection connection, String alias) throws SQLException, InvalidSqlGenerationException {
         SqlParameter sqlParameter = selector.getSqlAndParameters();
         this.jormLogger.info(sqlParameter.toString());
         this.jormLogger.startRecord(alias, sqlParameter.sql);
-        PreparedStatement ps = connection.prepareStatement(sqlParameter.sql);
+        System.out.println(sqlParameter.sql + " AND deletedAt IS NOT NULL");
+        PreparedStatement ps = connection.prepareStatement(sqlParameter.sql + " AND deletedAt IS NULL");
         addParameters(ps, sqlParameter.getListParameters());
         ResultSet rs = ps.executeQuery();
         jormLogger.endRecord(alias);
