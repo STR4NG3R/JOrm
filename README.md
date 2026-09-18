@@ -584,6 +584,26 @@ Because of its **< 80KB footprint** and **zero dependencies**, JOrm is especiall
 - High-throughput APIs where ORM overhead is unacceptable
 
 ---
+## Testing
+
+JOrm includes integration tests powered by Testcontainers.
+
+Each test spins up a real PostgreSQL database inside a Docker container, ensuring that
+queries, mappings, and transactions are validated against an actual database engine.
+
+This guarantees that behavior in tests matches real-world environments without requiring
+developers to install or configure PostgreSQL locally.
+---
+## Why JOrm Exists
+
+JOrm was created after working on large enterprise systems where SQL queries were duplicated across many services.
+
+Adding a new column often required searching and modifying dozens of queries across the codebase.
+
+Traditional ORMs like Hibernate were not a good fit for those environments due to their complexity and heavy dependencies.
+
+JOrm was designed as a lightweight alternative that allows developers to keep full control over SQL while reducing duplication and improving maintainability.
+---
 
 ## License
 
