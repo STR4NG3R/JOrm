@@ -252,6 +252,26 @@ new Runner<Void>(connection)
         );
 ```
 
+### Excluding columns
+
+`excludeColumns(...)` removes columns from the generated `SET` clause, even if you added them to the value map. This is handy when you build the column map generically but want to keep certain fields untouched (for example, never overwrite `password`):
+
+```java
+new Runner<Void>(connection)
+        .update(
+                new Update()
+                        .from("users")
+                        .excludeColumns("password") // never updated
+                        .setColumnsValuesToUpdate(p -> {
+                            p.put("name", "Ana");
+                            p.put("password", "secret"); // dropped from SET
+                        })
+                        .where("id = :id", p -> p.put("id", 1))
+        );
+// UPDATE users SET name = ? WHERE id = ?
+// parameters: [Ana, 1]   (password is excluded)
+```
+
 ---
 
 ## DELETE
