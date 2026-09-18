@@ -1,7 +1,6 @@
 package io.github.str4ng3r.sql;
 
 import io.github.str4ng3r.*;
-import io.github.str4ng3r.common.Table;
 
 import java.lang.reflect.Field;
 import java.util.*;
@@ -80,8 +79,7 @@ class ScannerEntity {
         processedEntity.setColumns(columns);
     }
 
-    public static EntityMetaData getEntityFromTableName(Table tableName) {
-        String k = createKey(tableName.name, tableName.database, tableName.schema);
-        return entitiesRegistryByKey.getOrDefault(k, null);
+    public static EntityMetaData getEntityFromTableName(String tableName) {
+        return entitiesRegistryByKey.getOrDefault(tableName, null);
     }
 }

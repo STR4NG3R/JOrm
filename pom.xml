@@ -42,16 +42,12 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
-    <!-- ❌ QUITA systemPath (no permitido) -->
     <dependencies>
-
-        <!-- Si puedes publícalo en Maven o usa jitpack -->
         <dependency>
-            <groupId>io.github.str4ng3r</groupId>
-            <artifactId>querybuilder</artifactId>
-            <version>1.0.2</version>
+            <groupId>com.github.STR4NG3R</groupId>
+            <artifactId>querybuilder4j</artifactId>
+            <version>1.1.1</version>
         </dependency>
-
         <!-- TESTS -->
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -82,6 +78,13 @@
             <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
         </repository>
     </distributionManagement>
+
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
 
     <build>
         <plugins>
