@@ -39,8 +39,8 @@ public class SelectTest {
                         "u.id id", "u.name name", "u.email email", "u.role role",
                         "u.email as email"
                 )
-                .join(Join.JOIN.LEFT, "userAddress as ua", "u.id = ua.userId")
-                .join(Join.JOIN.INNER, "addresses as a", "a.id = ua.addressId")
+                .join(Join.LEFT, "userAddress as ua", "u.id = ua.userId")
+                .join(Join.INNER, "addresses as a", "a.id = ua.addressId")
                 .setDialect(Constants.SqlDialect.Postgres);
 
         if (name != null)
@@ -58,8 +58,8 @@ public class SelectTest {
     public static Selector baseQueryShops() {
         Selector s = new Selector();
         return s.select("user u", "u.id", "u.name", "u.email", "u.role ")
-                .join(Join.JOIN.LEFT, "userShop as us", "u.id = us.userId")
-                .join(Join.JOIN.INNER, "shops as s", "s.id = us.shopId")
+                .join(Join.LEFT, "userShop as us", "u.id = us.userId")
+                .join(Join.INNER, "shops as s", "s.id = us.shopId")
                 .setDialect(Constants.SqlDialect.Postgres);
     }
 

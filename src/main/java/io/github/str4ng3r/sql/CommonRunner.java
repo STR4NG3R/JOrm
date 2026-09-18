@@ -1,8 +1,6 @@
 package io.github.str4ng3r.sql;
 
 import io.github.str4ng3r.common.Insert;
-import io.github.str4ng3r.common.Selector;
-import io.github.str4ng3r.common.Table;
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
 import io.github.str4ng3r.utils.JDBCUtils;
 import io.github.str4ng3r.utils.JormLogger;
@@ -31,19 +29,15 @@ public class CommonRunner<T> {
         return connection;
     }
 
-    protected Selector commonSelect(Selector s) {
-        s.setWithDeleted(withDeleted);
-        if (!withDeleted) {
-            List<Table> tables = s.getTables();
-            for (Table e : tables) {
-                String[] tableNameAlias = getAliasTable(e.name);
-                String k = ScannerEntity.createKey(tableNameAlias[0], e.database, e.schema);
-                EntityMetaData found = ScannerEntity.entitiesRegistryByKey.get(k);
-                if (found != null)
-                    e.deletedAtColumn = found.columnDeletedAt;
-            }
-        }
-        return s;
+    /**
+     * Resolves the soft-delete column for a table name, or null if the entity
+     * is not registered or has no @DeletedAt column. Used to append the
+     * "deletedAt IS NULL" filter when withDeleted is false.
+     */
+    protected String resolveDeletedAtColumn(String tableExpression) {
+        String[] tableNameAlias = getAliasTable(tableExpression);
+        EntityMetaData found = ScannerEntity.entitiesRegistryByKey.get(tableNameAlias[0]);
+        return found != null ? found.columnDeletedAt : null;
     }
 
     public String[] getAliasTable(String t) {
@@ -61,7 +55,7 @@ public class CommonRunner<T> {
             processedEntity.getValues().add(new Date(new java.util.Date().getTime()));
         }
 
-        String sql = insertStatement(clazz, processedEntity).write();
+        String sql = insertStatement(clazz, processedEntity).getSql();
         jormLogger.info(sql);
         jormLogger.startRecord(alias);
         PreparedStatement ps = getConnection().prepareStatement(sql);
@@ -72,13 +66,14 @@ public class CommonRunner<T> {
     }
 
     Insert insertStatement(Class<T> clazz, EntityMetaData processedEntity) {
-        Insert insert = new Insert(clazz.getSimpleName())
-                .setColumns(String.join(", ", processedEntity.getColumns()))
-                .setTable(processedEntity.tableName)
-                .setValues(processedEntity.getValues().toArray(new Object[0]));
+        List<String> columns = new java.util.ArrayList<>(processedEntity.getColumns());
         if (processedEntity.columnCreatedAt != null)
-            insert.setColumns(", " + processedEntity.columnCreatedAt);
-        return insert;
+            columns.add(processedEntity.columnCreatedAt);
+
+        return new Insert(clazz.getSimpleName())
+                .setTable(processedEntity.tableName)
+                .setColumns(columns.toArray(new String[0]))
+                .setValues(processedEntity.getValues().toArray(new Object[0]));
     }
 
     protected void commonBatchInsert(
@@ -90,7 +85,7 @@ public class CommonRunner<T> {
         if (tableMeta.getColumnCreatedAt() != null) {
             tableMeta.getValues().add(new Date(System.currentTimeMillis()));
         }
-        String sql = insertStatement(clazz, tableMeta).write();
+        String sql = insertStatement(clazz, tableMeta).getSql();
 
         long count = 0;
         PreparedStatement ps = getConnection().prepareStatement(sql);
@@ -110,7 +105,6 @@ public class CommonRunner<T> {
                 ps.executeBatch(); // flush
                 ps.clearBatch();
                 getConnection().commit(); // commit parcial
-                // TODO: Log para metricas
             }
         }
         ps.executeBatch();

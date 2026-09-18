@@ -9,7 +9,7 @@ Designed for environments where heavy ORMs are not ideal:
 - ⚡ Lightweight APIs
 - 🎯 Applications that require direct SQL control
 
-> **Less than 80KB. Zero external dependencies.**
+> **Less than 80KB. Single lightweight dependency, built on JDBC.**
 
 ---
 
@@ -18,7 +18,7 @@ Designed for environments where heavy ORMs are not ideal:
 | Feature | Description |
 |---|---|
 | 🪶 Lightweight | Less than 80KB jar |
-| 🚫 No dependencies | Built purely on top of JDBC |
+| 🔗 Single dependency | Only the zero-dependency query builder, on top of JDBC |
 | 🔨 Query Builder | Fluent API for SELECT, INSERT, UPDATE, DELETE |
 | 🗺️ Auto mapping | Automatic entity mapping via annotations |
 | ✋ Manual mapping | Full control via `ResultSet` consumer |
@@ -26,7 +26,9 @@ Designed for environments where heavy ORMs are not ideal:
 | 🔀 Upsert | Smart insert — updates if record exists |
 | 📦 Batch Insert | Efficient bulk inserts with configurable batch size |
 | 🗑️ Soft Delete | `@DeletedAt` annotation, transparent filtering |
-| 🔗 Joins | LEFT, INNER joins in the query builder |
+| 🔗 Joins | INNER, LEFT, RIGHT and CROSS joins in the query builder |
+| 📥 WHERE IN | Bind a collection and it expands to one `?` per element |
+| 🔁 Transactions | Callback-style or manual commit/rollback with isolation levels |
 | 📊 Metrics | Per-query performance tracking with slow query detection |
 
 ---
@@ -312,8 +314,8 @@ public static Selector userQuery(String name, String lastName, String postalCode
 
     Selector selector = new Selector()
             .select("users as u", "u.id", "u.name", "u.email", "u.role")
-            .join(Join.JOIN.LEFT,  "userAddress as ua", "u.id = ua.userId")
-            .join(Join.JOIN.INNER, "addresses as a",    "a.id = ua.addressId");
+            .join(Join.LEFT,  "userAddress as ua", "u.id = ua.userId")
+            .join(Join.INNER, "addresses as a",    "a.id = ua.addressId");
 
     if (name != null)
         selector.andWhere("u.name LIKE CONCAT('%', :name, '%')",
@@ -332,6 +334,25 @@ public static Selector userQuery(String name, String lastName, String postalCode
 ```
 
 All parameters are bound as named parameters — no string interpolation, no SQL injection risk.
+
+---
+
+## WHERE IN
+
+Bind a `Collection` to a named parameter and JOrm expands it to one `?` per element automatically:
+
+```java
+Selector selector = new Selector()
+        .select("users", "id", "name", "email")
+        .where("id IN (:ids)", p -> p.put("ids", Arrays.asList(1, 2, 3)));
+
+List<UserDao> users = new Runner<UserDao>(connection)
+        .select(selector, UserDao.class);
+// SELECT id, name, email FROM users WHERE id IN (?,?,?)
+// parameters: [1, 2, 3]
+```
+
+A single-element collection works the same way, expanding to a single placeholder. Values are always bound as parameters — never concatenated into the SQL.
 
 ---
 
@@ -411,8 +432,8 @@ Selector selector = new Selector()
         .select("users as u",
                 "u.id", "u.name", "u.email",
                 "a.street", "a.city", "a.postalCode")
-        .join(Join.JOIN.LEFT, "userAddress as ua", "u.id = ua.userId")
-        .join(Join.JOIN.LEFT, "addresses as a",    "a.id = ua.addressId")
+        .join(Join.LEFT, "userAddress as ua", "u.id = ua.userId")
+        .join(Join.LEFT, "addresses as a",    "a.id = ua.addressId")
         .where("u.id = :id", p -> p.put("id", userId));
 
 List<UserWithAddress> result = new Runner<UserWithAddress>(connection)
@@ -577,7 +598,7 @@ JOrm does not try to abstract SQL away. It gives you:
 - **Built-in metrics** without any extra dependency
 - A **near-zero startup cost** — no reflection scanning, no proxy generation, no context initialization
 
-Because of its **< 80KB footprint** and **zero dependencies**, JOrm is especially well-suited for:
+Because of its **< 80KB footprint** and **single lightweight dependency**, JOrm is especially well-suited for:
 
 - AWS Lambda and other FaaS platforms where cold start time matters
 - Microservices that need a small, auditable dependency tree

@@ -294,8 +294,7 @@ public class PostgresExtendedTest {
     }
 
     /**
-     * Verifica que WHERE IN con una lista de IDs retorna exactamente los registros esperados.
-     * TODO: actualizar a p.put("ids", Arrays.asList(1,2,3)) cuando se actualice jsqb con soporte de Collection.
+     * Verifica que WHERE IN con una colección expande automáticamente los placeholders (jsqb 1.1.1+).
      */
     @Test
     public void h2_selectWhereIn() throws SQLException, InvalidSqlGenerationException {
@@ -305,11 +304,7 @@ public class PostgresExtendedTest {
                         "updatedAt as \"updatedAt\"",
                         "createdAt as \"createdAt\"",
                         "deletedAt as \"deletedAt\"")
-                .where("id IN (:id1, :id2, :id3)", p -> {
-                    p.put("id1", 1);
-                    p.put("id2", 2);
-                    p.put("id3", 3);
-                });
+                .where("id IN (:ids)", p -> p.put("ids", Arrays.asList(1, 2, 3)));
 
         List<UserDao> result = getUser(true, s);
 
@@ -322,7 +317,7 @@ public class PostgresExtendedTest {
     }
 
     /**
-     * Verifica que WHERE IN con un solo elemento funciona correctamente.
+     * Verifica que WHERE IN con un solo elemento en la colección funciona correctamente.
      */
     @Test
     public void h3_selectWhereInSingleElement() throws SQLException, InvalidSqlGenerationException {
@@ -332,7 +327,7 @@ public class PostgresExtendedTest {
                         "updatedAt as \"updatedAt\"",
                         "createdAt as \"createdAt\"",
                         "deletedAt as \"deletedAt\"")
-                .where("id IN (:id1)", p -> p.put("id1", 5));
+                .where("id IN (:ids)", p -> p.put("ids", Arrays.asList(5)));
 
         List<UserDao> result = getUser(true, s);
 
@@ -522,6 +517,51 @@ public class PostgresExtendedTest {
                 );
 
         assertEquals("No debe afectar ninguna fila", 0, affected);
+    }
+
+    /**
+     * Verifica el soft delete usando la entidad DAO directamente (delete(T, false)).
+     * El registro debe conservar deletedAt seteado y desaparecer de las consultas
+     * que excluyen eliminados.
+     */
+    @Test
+    public void p2_softDeleteByEntity() throws SQLException, InvalidSqlGenerationException {
+        UserDao toDelete = new UserDao();
+        toDelete.setId(9);
+
+        int affected = new Runner<UserDao>(getConnection())
+                .enableLogs()
+                .delete(toDelete, false);
+
+        assertEquals("Debe afectar 1 fila", 1, affected);
+
+        // Con withDeleted=true el registro sigue existiendo con deletedAt seteado
+        UserDao found = getUser(true, SelectTest.getUserById(9)).get(0);
+        assertNotNull("deletedAt debe estar seteado tras el soft delete", found.getDeletedAt());
+
+        // Con withDeleted=false el registro queda excluido
+        assertTrue("El registro soft-deleted no debe aparecer sin withDeleted",
+                getUser(false, SelectTest.getUserById(9)).isEmpty());
+    }
+
+    /**
+     * Verifica el hard delete usando la entidad DAO directamente (delete(T, true)).
+     * El registro debe eliminarse físicamente y no aparecer ni con withDeleted=true.
+     */
+    @Test
+    public void p3_hardDeleteByEntity() throws SQLException, InvalidSqlGenerationException {
+        UserDao toDelete = new UserDao();
+        toDelete.setId(10);
+
+        int affected = new Runner<UserDao>(getConnection())
+                .enableLogs()
+                .delete(toDelete, true);
+
+        assertEquals("Debe afectar 1 fila", 1, affected);
+
+        // El registro no debe existir ni incluyendo eliminados
+        assertTrue("El registro hard-deleted no debe existir",
+                getUser(true, SelectTest.getUserById(10)).isEmpty());
     }
 
     // -------------------------------------------------------------------------

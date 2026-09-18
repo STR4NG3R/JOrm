@@ -88,8 +88,7 @@ public class PostgresTest {
                 .enableLogs()
                 .enableMetrics("insert_user")
                 .select(
-                        SelectTest.baseQueryUsers("o", null, null)
-                                .setWithDeleted(false),
+                        SelectTest.baseQueryUsers("o", null, null),
                         UserDao.class);
         System.out.println(list);
     }
@@ -176,7 +175,7 @@ public class PostgresTest {
         deleteCoreScenarios(false, 3);
         user = getUser(true, SelectTest.getUserById(3)).get(0);
         assertNotNull(user.getDeletedAt());
-        assertEquals("No user found", getUser(false, SelectTest.getUserById(1)).size(), 0);
+        assertEquals("No user found", getUser(false, SelectTest.getUserById(3)).size(), 0);
     }
 
     @Test
