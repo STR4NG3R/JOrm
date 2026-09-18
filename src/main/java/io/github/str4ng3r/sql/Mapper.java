@@ -4,6 +4,7 @@ import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
 import io.github.str4ng3r.utils.JormLogger;
 import io.github.str4ng3r.Entity;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.ResultSet;
@@ -69,15 +70,31 @@ public class Mapper<T> {
         jormLogger.startRecord("map-" + alias);
         List<T> list = new ArrayList<>();
         try {
+            // Ensure the reflection cache (fields + constructor) is built once.
+            if (clazz.isAnnotationPresent(Entity.class) && !entitiesRegistry.containsKey(clazz))
+                registryEntity(clazz);
+            EntityMetaData meta = entitiesRegistry.get(clazz);
+            Map<String, Field> fieldCache = meta != null ? meta.getFieldCache() : null;
+
+            @SuppressWarnings("unchecked")
+            Constructor<T> ctor = meta != null && meta.getNoArgConstructor() != null
+                    ? (Constructor<T>) meta.getNoArgConstructor()
+                    : clazz.getDeclaredConstructor();
+            ctor.setAccessible(true);
+
             ResultSetMetaData metaData = rs.getMetaData();
             int columnCount = metaData.getColumnCount();
 
+            // Column labels are identical for every row: read them once.
+            String[] labels = new String[columnCount + 1];
+            for (int i = 1; i <= columnCount; i++)
+                labels[i] = metaData.getColumnLabel(i);
+
             while (rs.next()) {
-                T obj = clazz.getDeclaredConstructor().newInstance();
+                T obj = ctor.newInstance();
                 for (int i = 1; i <= columnCount; i++) {
-                    String columnName = metaData.getColumnLabel(i);
                     Object columnValue = rs.getObject(i);
-                    if (columnValue != null) setFieldValue(obj, columnName, columnValue);
+                    if (columnValue != null) setFieldValue(obj, labels[i], columnValue, fieldCache);
                 }
                 list.add(obj);
             }
@@ -112,6 +129,32 @@ public class Mapper<T> {
 
         // Recursive call to handle deeper nested fields
         loopNestedClass(parentObj, columnNames, index + 1, columnValue);
+    }
+
+    /**
+     * Cache-aware field setter used by mapFromResultSet.
+     * Falls back to reflective lookup for nested columns or when the cache misses.
+     */
+    private void setFieldValue(T obj, String columnName, Object columnValue, Map<String, Field> fieldCache) {
+        if (columnName.contains(".")) {
+            setFieldValue(obj, columnName, columnValue); // nested path: use reflective walker
+            return;
+        }
+        if (fieldCache != null) {
+            Field field = fieldCache.get(columnName);
+            if (field != null) {
+                try {
+                    field.set(obj, columnValue); // already setAccessible(true)
+                } catch (IllegalAccessException e) {
+                    jormLogger.error("Unable to set value on mapping", e);
+                }
+                return;
+            }
+            jormLogger.warn("⚠️ Warning: Field '" + columnName + "' not found in " + obj.getClass().getSimpleName());
+            return;
+        }
+        // No cache available: fall back to the reflective path.
+        setFieldValue(obj, columnName, columnValue);
     }
 
     private void setFieldValue(T obj, String columnName, Object columnValue) {

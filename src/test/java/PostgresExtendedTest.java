@@ -119,6 +119,37 @@ public class PostgresExtendedTest {
         assertEquals("No debe afectar ninguna fila si el ID no existe", 0, affected);
     }
 
+    /**
+     * Verifica que excludeColumns() deja fuera del SET las columnas indicadas,
+     * aunque hayan sido agregadas al mapa de valores.
+     */
+    @Test
+    public void b3_updateExcludeColumns() throws SQLException, InvalidSqlGenerationException {
+        // Valor de password original del user id=1 (del mock: 'password123')
+        UserDao before = getUser(true, SelectTest.getUserById(1)).get(0);
+        String originalPassword = before.getPassword();
+
+        int affected = new Runner<Void>(getConnection())
+                .enableLogs()
+                .update(
+                        new Update()
+                                .from("users")
+                                .excludeColumns("password") // no debe actualizarse
+                                .setColumnsValuesToUpdate(p -> {
+                                    p.put("name", "ExcludedColsUser");
+                                    p.put("password", "should-not-be-saved");
+                                })
+                                .where("id = :id", p -> p.put("id", 1))
+                );
+
+        assertEquals("Debe afectar 1 fila", 1, affected);
+
+        UserDao after = getUser(true, SelectTest.getUserById(1)).get(0);
+        assertEquals("El nombre sí debe actualizarse", "ExcludedColsUser", after.getName());
+        assertEquals("El password NO debe cambiar (columna excluida)",
+                originalPassword, after.getPassword());
+    }
+
     // -------------------------------------------------------------------------
     // BATCH INSERT
     // -------------------------------------------------------------------------
