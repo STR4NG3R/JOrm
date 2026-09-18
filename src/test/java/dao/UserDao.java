@@ -1,9 +1,7 @@
 package dao;
 
+import io.github.str4ng3r.*;
 
-import org.example.*;
-
-import java.sql.Date;
 import java.sql.Timestamp;
 
 @Entity(name = "users")

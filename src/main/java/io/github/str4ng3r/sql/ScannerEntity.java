@@ -1,28 +1,31 @@
-package org.example.sql;
+package io.github.str4ng3r.sql;
 
+import io.github.str4ng3r.*;
 import io.github.str4ng3r.common.Table;
-import org.example.*;
 
 import java.lang.reflect.Field;
 import java.util.*;
 import java.util.function.Consumer;
 
 class ScannerEntity {
-    static Map<Class<?>, EntityMetaData> entities = new HashMap<>();
+    static Map<Class<?>, EntityMetaData> entitiesRegistry = new HashMap<>();
+    static Map<String, EntityMetaData> entitiesRegistryByKey = new HashMap<>();
+
 
     static void registryEntity(Class<?>... entityClasses) {
         for (Class<?> clazz : entityClasses) {
             if (!clazz.isAnnotationPresent(Entity.class)) continue;
+            Entity e = clazz.getAnnotation(Entity.class);
 
-            entities.computeIfAbsent(clazz, (c) -> {
-                Entity e = c.getAnnotation(Entity.class);
+            entitiesRegistry.computeIfAbsent(clazz, (c) -> {
 
                 EntityMetaData entityMetaData = new EntityMetaData();
                 entityMetaData.tableName = e.name();
                 entityMetaData.schema = e.schema();
                 entityMetaData.db = e.database();
-
                 getColumnsFromEntity(c, entityMetaData);
+                entitiesRegistryByKey.put(createKey(entityMetaData.tableName, entityMetaData.db, entityMetaData.schema), entityMetaData);
+
                 return entityMetaData;
             });
         }
@@ -30,9 +33,9 @@ class ScannerEntity {
 
     public static String createKey(String name, String db, String schema) {
         StringBuilder key = new StringBuilder();
-        if (db != null && !db.isEmpty()) key.append(db);
-        if (schema != null && !schema.isEmpty()) key.append(".").append(schema);
-        key.append(".").append(name);
+        if (db != null && !db.isEmpty()) key.append(db).append(".");
+        if (schema != null && !schema.isEmpty()) key.append(schema).append(".");
+        key.append(name);
         return key.toString();
     }
 
@@ -79,7 +82,6 @@ class ScannerEntity {
 
     public static EntityMetaData getEntityFromTableName(Table tableName) {
         String k = createKey(tableName.name, tableName.database, tableName.schema);
-        if (entities.containsKey(k)) return entities.get(k);
-        return null;
+        return entitiesRegistryByKey.getOrDefault(k, null);
     }
 }

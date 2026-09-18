@@ -2,40 +2,36 @@
 
 **JOrm** is a lightweight Java ORM focused on simplicity, performance, and minimal footprint.
 
-It is designed for environments where large ORMs are not ideal, such as:
+Designed for environments where heavy ORMs are not ideal:
 
-- Serverless platforms (AWS Lambda, Cloud Functions)
-- Microservices
-- Lightweight APIs
-- Applications that require direct SQL control
+- ☁️ Serverless platforms (AWS Lambda, Cloud Functions)
+- 🔬 Microservices
+- ⚡ Lightweight APIs
+- 🎯 Applications that require direct SQL control
 
-JOrm weighs **less than 80KB** and has **no external dependencies**, making it ideal for **serverless environments**.
-
----
-
-# Features
-
-- Lightweight (<80kb)
-- No dependencies
-- Built on top of JDBC
-- Query Builder support
-- Optional manual mapping
-- Automatic entity mapping
-- Pagination support
-- Soft Delete support
-- Works well in **serverless environments**
-- No runtime dependencies
-- JDBC-based
-- Optional reflection-free mapping
-- Integration tested with PostgreSQL via Testcontainers
+> **Less than 80KB. Zero external dependencies.**
 
 ---
 
-# Installation
+## Features
 
-Download the latest release from Maven Central.
+| Feature | Description |
+|---|---|
+| 🪶 Lightweight | Less than 80KB jar |
+| 🚫 No dependencies | Built purely on top of JDBC |
+| 🔨 Query Builder | Fluent API for SELECT, INSERT, UPDATE, DELETE |
+| 🗺️ Auto mapping | Automatic entity mapping via annotations |
+| ✋ Manual mapping | Full control via `ResultSet` consumer |
+| 📄 Pagination | Built-in paginated queries with metadata |
+| 🔀 Upsert | Smart insert — updates if record exists |
+| 📦 Batch Insert | Efficient bulk inserts with configurable batch size |
+| 🗑️ Soft Delete | `@DeletedAt` annotation, transparent filtering |
+| 🔗 Joins | LEFT, INNER joins in the query builder |
+| 📊 Metrics | Per-query performance tracking with slow query detection |
 
-Example Maven dependency:
+---
+
+## Installation
 
 ```xml
 <dependency>
@@ -47,7 +43,9 @@ Example Maven dependency:
 
 ---
 
-# Entity Example
+## Entity
+
+Annotate your class with `@Entity` and mark fields with the provided annotations:
 
 ```java
 @Entity(name = "users")
@@ -68,30 +66,33 @@ public class UserDao {
     @Column
     String password;
 
+    @CreatedAt
+    Timestamp createdAt;
+
     @UpdatedAt
     Timestamp updatedAt;
 
     @DeletedAt
     Timestamp deletedAt;
-
-    @CreatedAt
-    Timestamp createdAt;
 }
 ```
 
+| Annotation | Behavior |
+|---|---|
+| `@Id` | Marks the primary key |
+| `@Column` | Mapped column, included in INSERT/UPDATE |
+| `@CreatedAt` | Auto-set on insert |
+| `@UpdatedAt` | Auto-set on update |
+| `@DeletedAt` | Used for soft delete |
+
 ---
 
-# SELECT Example
-
-Using a query builder:
+## SELECT
 
 ```java
 Selector selector = new Selector()
         .select("users",
-                "id",
-                "name",
-                "email",
-                "role",
+                "id", "name", "email", "role",
                 "updatedAt as \"updatedAt\"",
                 "createdAt as \"createdAt\"",
                 "deletedAt as \"deletedAt\"")
@@ -101,237 +102,159 @@ List<UserDao> users = new Runner<UserDao>(connection)
         .select(selector, UserDao.class);
 ```
 
----
+### Manual Mapping
 
-# SELECT with Manual Mapping
-
-Manual mapping is also supported if you prefer full control.
+When you need full control over the mapping:
 
 ```java
 List<UserDao> users = new Runner<UserDao>(connection)
-        .select(
-                selector,
-                rs -> new UserDao(
-                        rs.getInt("id"),
-                        rs.getString("name"),
-                        rs.getString("email")
-                )
-        );
+        .select(selector, rs -> new UserDao(
+                rs.getInt("id"),
+                rs.getString("name"),
+                rs.getString("email")
+        ));
 ```
 
----
-
-# Pagination
-
-JOrm supports paginated queries using `selectPaginated`.
+If you use the same mapping logic in multiple places, define it once as a constant on the entity itself to avoid repetition:
 
 ```java
-Template<List<UserDao>> paginated = new Runner<UserDao>(connection)
-        .selectPaginated(
-                1,
-                10,
-                selector,
-                UserDao.class
-        );
-```
+@Entity(name = "users")
+public class UserDao {
 
-You can access the results like this:
+    @Id Integer id;
+    @Column String name;
+    @Column String email;
 
-```java
-List<UserDao> users = paginated.getData();
-```
-
----
-
-# Pagination Response Structure
-
-The `selectPaginated` method returns a `Template<T>` object.
-
-`Template<T>` extends the `Pagination` class and wraps the paginated result data.
-
-```java
-public class Template<T> extends Pagination {
-
-    T data;
-
-    public Template(SqlParameter sqlParameter, T data) {
-        super(sqlParameter.p);
-        this.data = data;
-    }
-
-    public T getData() {
-        return this.data;
-    }
+    // define the mapper once, reuse everywhere
+    public static final Function<ResultSet, UserDao> MAPPER = rs -> {
+        try {
+            return new UserDao(
+                    rs.getInt("id"),
+                    rs.getString("name").toUpperCase(), // custom conversion
+                    rs.getString("email")
+            );
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    };
 }
 ```
 
-The response contains both **data and pagination metadata**.
+```java
+// reuse across different selectors without repeating the lambda
+List<UserDao> users  = runner.select(selectorA, UserDao.MAPPER);
+List<UserDao> admins = runner.select(selectorB, UserDao.MAPPER);
 
-Conceptual example:
+Template<List<UserDao>> page = runner.selectPaginated(1, 10, selector, UserDao.MAPPER);
+```
 
-```text
+This keeps mapping logic in one place without coupling the entity to the ORM — `UserDao` remains a plain object, the mapper is just a static field.
+
+---
+
+## Pagination
+
+```java
+Template<List<UserDao>> page = new Runner<UserDao>(connection)
+        .selectPaginated(1, 10, selector, UserDao.class);
+
+List<UserDao> users = page.getData();
+```
+
+The `Template<T>` response includes pagination metadata alongside the data:
+
+```json
 {
-  data: [UserDao, UserDao, UserDao, ...],
-  currentPage: 1,
-  pageSize: 10,
-  count: 120,
-  totalPages: 12
+  "data": [...],
+  "currentPage": 1,
+  "pageSize": 10,
+  "count": 120,
+  "totalPages": 12
 }
 ```
 
-This structure allows easy integration with APIs and UI pagination components.
+Manual mapping is also supported in paginated queries:
+
+```java
+Template<List<UserDao>> page = new Runner<UserDao>(connection)
+        .selectPaginated(1, 10, selector, rs -> new UserDao(
+                rs.getInt("id"),
+                rs.getString("name"),
+                rs.getString("email")
+        ));
+```
 
 ---
 
-# Insert / Update (Upsert Behavior)
+## Insert / Update (Upsert)
 
-JOrm supports **upsert-style operations** using the `insert()` method.
+`insert()` behaves as an upsert — if the entity has a non-null `@Id`, JOrm checks if the record exists first:
 
-If the entity contains a non-null `@Id`, JOrm will:
-
-1. Perform a lookup to determine if the record exists
-2. If the record exists → perform an **UPDATE**
-3. If the record does not exist → perform an **INSERT**
-
-Example:
+- Record **exists** → `UPDATE`
+- Record **does not exist** → `INSERT`
 
 ```java
+// INSERT — no id set
 UserDao user = new UserDao();
-user.setId(1);
-user.setName("Updated User Name");
+user.setName("Alice");
+user.setEmail("alice@example.com");
+user.setRole("user");
 
-new Runner<UserDao>()
+new Runner<UserDao>(connection)
         .insert(UserDao.class, user);
 ```
 
-Behavior:
+```java
+// UPSERT — id is set, JOrm checks first
+UserDao user = new UserDao();
+user.setId(1);
+user.setName("Updated Name");
 
-If the record exists:
-
-```sql
-UPDATE users
-SET name = ?
-WHERE id = ?
+new Runner<UserDao>(connection)
+        .insert(UserDao.class, user);
 ```
 
-If the record does not exist:
+> **Note:** When an `@Id` is present, JOrm performs a `SELECT` before deciding between INSERT and UPDATE.
+> Avoid using this pattern in tight loops or batch scenarios — use `insert(clazz, list, batchSize)` instead.
 
-```sql
-INSERT INTO users (id, name)
-VALUES (?, ?)
-```
-
-This allows a single operation to handle both **create and update workflows**.
+`@CreatedAt` is set automatically on insert. `@UpdatedAt` is set automatically on update.
 
 ---
 
-# Dynamic Query Builder Example
+## Batch Insert
 
-JOrm's Query Builder allows you to dynamically construct SQL queries based on optional parameters.
-
-Example with conditional filters and joins:
+Insert large collections efficiently with a configurable batch size:
 
 ```java
-public static Selector baseQueryUsers(String name, String lastName, String cp) {
+List<UserDao> users = buildUserList(); // any size
 
-    Selector selector = new Selector()
-            .select(
-                    "users as u",
-                    "u.id id",
-                    "u.name name",
-                    "u.email email",
-                    "u.role role"
-            )
-            .join(Join.JOIN.LEFT, "userAddress as ua", "u.id = ua.userId")
-            .join(Join.JOIN.INNER, "addresses as a", "a.id = ua.addressId");
-
-    if (name != null) {
-        selector.andWhere(
-                "u.name LIKE CONCAT('%', :name, '%')",
-                p -> p.put("name", name)
-        );
-    }
-
-    if (lastName != null) {
-        selector.andWhere(
-                "u.lastName LIKE CONCAT('%', :lastName, '%')",
-                p -> p.put("lastName", lastName)
-        );
-    }
-
-    if (cp != null) {
-        selector.andWhere(
-                "a.cp = :cp",
-                p -> p.put("cp", cp)
-        );
-    }
-
-    return selector;
-}
+new Runner<UserDao>(connection)
+        .insert(UserDao.class, users, 50); // flush every 50 rows
 ```
 
-Example usage:
-
-```java
-Selector selector = baseQueryUsers("John", null, "64000");
-
-List<UserDao> users = new Runner<UserDao>()
-        .select(selector, UserDao.class);
-```
+JOrm handles partial commits automatically — if the list size is not a multiple of `batchSize`, the remaining records are committed at the end.
 
 ---
 
-# Benefits of Dynamic Query Building
+## UPDATE
 
-Using dynamic query construction provides several advantages:
+Use the `Update` builder for explicit updates with full control:
 
-### Flexible Filtering
-
-Optional parameters allow you to build queries dynamically without writing multiple SQL variants.
-
-Example:
-
-- Only filter by name
-- Filter by name and postal code
-- Filter by postal code only
-
-All using the same query builder.
-
----
-
-### Cleaner Code
-
-Instead of concatenating SQL strings manually, conditions are added in a structured way.
-
----
-
-### Safer Parameter Handling
-
-All parameters are bound using named parameters, reducing the risk of SQL injection.
-
----
-
-### Reusable Query Definitions
-
-Base queries can be reused across different services or APIs and extended with additional conditions when needed.
----
-
-# UPDATE Example
-
-If you need more control over your updates you can use query builders to perform updates
 ```java
 new Runner<Void>(connection)
         .update(
                 new Update()
-                        .table("users")
-                        .set("name = :name", p -> p.put("name", "Updated Name"))
+                        .from("users")
+                        .setColumnsValuesToUpdate(p -> p.put("name", "Updated Name"))
                         .where("id = :id", p -> p.put("id", 1))
         );
 ```
 
 ---
 
-# DELETE Example (Query Builder)
+## DELETE
+
+### Query Builder
 
 ```java
 new Runner<Void>(connection)
@@ -339,15 +262,11 @@ new Runner<Void>(connection)
                 new Delete()
                         .from("users")
                         .where("id = :id", p -> p.put("id", 1)),
-                false
+                false // false = soft delete, true = hard delete
         );
 ```
 
-The second parameter determines whether the delete is **soft** or **hard**.
-
----
-
-# Delete Using Entity
+### Entity
 
 ```java
 UserDao user = new UserDao();
@@ -359,77 +278,310 @@ new Runner<UserDao>(connection)
 
 ---
 
-# Soft Delete
+## Soft Delete
 
-JOrm supports soft delete using the `@DeletedAt` annotation.
+Add `@DeletedAt` to your entity and JOrm handles the rest transparently.
 
 ```java
 @DeletedAt
 Timestamp deletedAt;
 ```
 
-When performing a delete with `hardDelete = false`, JOrm will execute an update instead of removing the record.
-
-Example SQL behavior:
+When `hardDelete = false`, JOrm executes an UPDATE instead of DELETE:
 
 ```sql
 UPDATE users SET deletedAt = NOW() WHERE id = ?
 ```
 
----
-
-# Querying Soft Deleted Records
-
-By default, soft deleted records are excluded.
-
-To include them:
+Soft-deleted records are **excluded by default** from all queries. To include them:
 
 ```java
-List<UserDao> users = new Runner<UserDao>()
+List<UserDao> all = new Runner<UserDao>(connection)
         .withDeleted(true)
         .select(selector, UserDao.class);
 ```
 
 ---
 
-# Example Query Builder with Joins
+## Dynamic Query Builder
+
+Build queries conditionally without string concatenation:
 
 ```java
-Selector selector = new Selector()
-        .select(
-                "users as u",
-                "u.id id",
-                "u.name name",
-                "u.email email",
-                "u.role role"
-        )
-        .join(Join.JOIN.LEFT, "userAddress as ua", "u.id = ua.userId")
-        .join(Join.JOIN.INNER, "addresses as a", "a.id = ua.addressId")
-        .andWhere("u.name LIKE CONCAT('%', :name, '%')",
-                p -> p.put("name", "John"));
+public static Selector userQuery(String name, String lastName, String postalCode) {
+
+    Selector selector = new Selector()
+            .select("users as u", "u.id", "u.name", "u.email", "u.role")
+            .join(Join.JOIN.LEFT,  "userAddress as ua", "u.id = ua.userId")
+            .join(Join.JOIN.INNER, "addresses as a",    "a.id = ua.addressId");
+
+    if (name != null)
+        selector.andWhere("u.name LIKE CONCAT('%', :name, '%')",
+                p -> p.put("name", name));
+
+    if (lastName != null)
+        selector.andWhere("u.lastName LIKE CONCAT('%', :lastName, '%')",
+                p -> p.put("lastName", lastName));
+
+    if (postalCode != null)
+        selector.andWhere("a.cp = :cp",
+                p -> p.put("cp", postalCode));
+
+    return selector;
+}
+```
+
+All parameters are bound as named parameters — no string interpolation, no SQL injection risk.
+
+---
+
+## Transactions
+
+JOrm provides full transaction support directly on the `Runner`. All operations share the same `Connection`, so wrapping them in a transaction is straightforward.
+
+### Automatic — callback style (recommended)
+
+The `transaction()` method handles commit and rollback for you:
+
+```java
+new Runner<Void>(connection)
+        .transaction(runner -> {
+            runner.insert(UserDao.class, user);
+            runner.insert(OrderDao.class, order);
+            // any exception here triggers automatic rollback
+        });
+```
+
+If the callback throws, JOrm calls `rollback()` and rethrows the exception wrapped in `SQLException`. If it succeeds, JOrm calls `commit()` automatically.
+
+### With isolation level
+
+```java
+new Runner<Void>(connection)
+        .transaction(Runner.ISOLATION.SERIALIZABLE, runner -> {
+            runner.insert(UserDao.class, user);
+            runner.update(new Update()...);
+        });
+```
+
+Available isolation levels:
+
+| Level | Constant |
+|---|---|
+| None | `ISOLATION.NONE` |
+| Read Uncommitted | `ISOLATION.READ_UNCOMMITTED` |
+| Read Committed | `ISOLATION.READ_COMMITTED` |
+| Repeatable Read | `ISOLATION.REPEATABLE_READ` |
+| Serializable | `ISOLATION.SERIALIZABLE` |
+
+### Manual control
+
+For more granular control you can manage the transaction lifecycle yourself:
+
+```java
+Runner<Void> runner = new Runner<>(connection);
+runner.beginTransaction();
+
+try {
+    runner.insert(UserDao.class, user);
+    runner.update(new Update()...);
+    runner.commit();
+} catch (Exception e) {
+    runner.rollback();
+    throw e;
+}
 ```
 
 ---
 
-# Why JOrm?
+## Relationships (OneToMany / ManyToOne)
 
-JOrm focuses on **performance and minimalism**.
+JOrm does not provide `@OneToMany` or `@ManyToOne` annotations. This is a deliberate design decision.
 
-Unlike traditional ORMs, it does not attempt to abstract SQL entirely.
+Relationship loading introduces:
+- Implicit N+1 queries
+- Opaque lazy/eager loading behavior
+- Complex lifecycle management
 
-Instead it provides:
+Instead, JOrm encourages you to model relationships **explicitly** with joins and manual or auto mapping:
 
-- Simple entity mapping
-- A lightweight query builder
-- Full control over SQL
-- Minimal runtime overhead
+```java
+// Fetch users with their address in a single query
+Selector selector = new Selector()
+        .select("users as u",
+                "u.id", "u.name", "u.email",
+                "a.street", "a.city", "a.postalCode")
+        .join(Join.JOIN.LEFT, "userAddress as ua", "u.id = ua.userId")
+        .join(Join.JOIN.LEFT, "addresses as a",    "a.id = ua.addressId")
+        .where("u.id = :id", p -> p.put("id", userId));
 
-Because of its **very small footprint (<80KB)** and **no dependencies**, JOrm is particularly suitable for:
+List<UserWithAddress> result = new Runner<UserWithAddress>(connection)
+        .select(selector, rs -> new UserWithAddress(
+                rs.getInt("id"),
+                rs.getString("name"),
+                rs.getString("street"),
+                rs.getString("city")
+        ));
+```
 
-- AWS Lambda
-- Serverless architectures
-- High-performance microservices
-- Lightweight APIs
+For collections (one user → many orders), fetch them separately and compose in your service layer:
+
+```java
+List<UserDao> users = runner.select(userSelector, UserDao.class);
+List<OrderDao> orders = runner.select(orderSelector, OrderDao.class);
+
+// compose in your application code
+Map<Integer, List<OrderDao>> ordersByUser = orders.stream()
+        .collect(Collectors.groupingBy(OrderDao::getUserId));
+```
+
+This keeps queries visible, predictable, and easy to optimize.
+
+---
+
+## Metrics
+
+JOrm includes a built-in performance monitoring system. Enable it per query with `enableMetrics(alias)`:
+
+```java
+new Runner<UserDao>(connection)
+        .enableMetrics("get_users")
+        .select(selector, UserDao.class);
+```
+
+Metrics are stored **globally as a singleton** — shared across all `Runner` instances.
+
+### Slow Query Detection
+
+Configure the global threshold (default: 200ms):
+
+```java
+Metrics.setSlowThreshold(300); // queries over 300ms are marked as slow
+```
+
+### Accessing Metrics
+
+```java
+// Metrics for a specific alias
+Metrics m = JormLogger.getMetrics("get_users");
+long avg = m.getAverage();                     // average duration in ms
+List<TimeRecord> slow = m.getSlowQueries();    // slow query records
+
+// All slow queries across all aliases
+List<TimeRecord> allSlow = JormLogger.getAllSlowQueries();
+
+// Full metrics map
+Map<String, Metrics> all = JormLogger.getMetrics();
+```
+
+### Debug Endpoint
+
+`getMetricsSummary()` returns a JSON string ready to be served from a debug endpoint:
+
+```java
+// Spring
+@GetMapping("/debug/metrics")
+public ResponseEntity<String> metrics() {
+    return ResponseEntity.ok()
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(JormLogger.getMetricsSummary());
+}
+```
+
+Example response:
+
+```json
+{
+  "slowThresholdMs": 200,
+  "queries": {
+    "get_users": {
+      "avgMs": 12,
+      "slowCount": 0,
+      "slowQueries": []
+    },
+    "get_orders": {
+      "avgMs": 340,
+      "slowCount": 3,
+      "slowQueries": [
+        { "sql": "SELECT ...", "durationMs": 412 },
+        { "sql": "SELECT ...", "durationMs": 387 },
+        { "sql": "SELECT ...", "durationMs": 298 }
+      ]
+    }
+  }
+}
+```
+
+### Flush
+
+Clear all accumulated metrics (useful between test runs or on demand):
+
+```java
+JormLogger.flush();
+```
+
+---
+
+## Debug Logging
+
+Enable query logging for a specific runner:
+
+```java
+List<UserDao> users = new Runner<UserDao>(connection)
+        .enableLogs()
+        .select(selector, UserDao.class);
+```
+
+---
+
+## Caching
+
+JOrm does not include a built-in cache layer. This is intentional — caching strategy depends heavily on your infrastructure, consistency requirements, and data access patterns. A generic cache baked into an ORM tends to create more problems than it solves.
+
+For applications that need query result caching, the recommended approach is to handle it at the service layer using a dedicated cache like **Redis**:
+
+```java
+public List<UserDao> getUsers(String role) {
+    String cacheKey = "users:role:" + role;
+
+    // try cache first
+    List<UserDao> cached = redis.get(cacheKey, List.class);
+    if (cached != null) return cached;
+
+    // miss — query the database
+    List<UserDao> users = new Runner<UserDao>(connection)
+            .select(selector, UserDao.class);
+
+    redis.set(cacheKey, users, Duration.ofMinutes(5));
+    return users;
+}
+```
+
+This approach gives you full control over:
+- **TTL** per query type
+- **Cache invalidation** on write operations
+- **Consistency model** (cache-aside, write-through, etc.)
+- **Serialization format** (JSON, MessagePack, etc.)
+
+JOrm's [Metrics](#metrics) can help you identify which queries are worth caching — start with the ones showing high average duration or frequent slow query flags.
+
+---
+
+## Why JOrm?
+
+JOrm does not try to abstract SQL away. It gives you:
+
+- A **fluent query builder** that composes cleanly
+- **Automatic entity mapping** when you want convenience
+- **Manual mapping** when you need control
+- **Built-in metrics** without any extra dependency
+- A **near-zero startup cost** — no reflection scanning, no proxy generation, no context initialization
+
+Because of its **< 80KB footprint** and **zero dependencies**, JOrm is especially well-suited for:
+
+- AWS Lambda and other FaaS platforms where cold start time matters
+- Microservices that need a small, auditable dependency tree
+- High-throughput APIs where ORM overhead is unacceptable
 
 ---
 ## Testing
@@ -453,6 +605,6 @@ Traditional ORMs like Hibernate were not a good fit for those environments due t
 JOrm was designed as a lightweight alternative that allows developers to keep full control over SQL while reducing duplication and improving maintainability.
 ---
 
-# License
+## License
 
 MIT License

@@ -1,10 +1,11 @@
-package org.example.sql;
+package io.github.str4ng3r.sql;
 
 import io.github.str4ng3r.common.Insert;
 import io.github.str4ng3r.common.Selector;
 import io.github.str4ng3r.common.Table;
 import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
-import org.example.utils.JDBCUtils;
+import io.github.str4ng3r.utils.JDBCUtils;
+import io.github.str4ng3r.utils.JormLogger;
 
 import java.sql.Connection;
 import java.sql.Date;
@@ -16,9 +17,14 @@ public class CommonRunner<T> {
     boolean withDeleted;
     boolean hardDelete;
     Connection connection;
+    JormLogger jormLogger = new JormLogger();
+    JDBCUtils jdbcUtils = new JDBCUtils(jormLogger);
+    String alias;
 
     public CommonRunner(Connection connection) {
         this.connection = connection;
+        jormLogger.setEnable(false);
+        jormLogger.setEnableMetrics(false);
     }
 
     Connection getConnection() {
@@ -32,11 +38,9 @@ public class CommonRunner<T> {
             for (Table e : tables) {
                 String[] tableNameAlias = getAliasTable(e.name);
                 String k = ScannerEntity.createKey(tableNameAlias[0], e.database, e.schema);
-                if (ScannerEntity.entities.containsKey(k)) {
-                    EntityMetaData finded = ScannerEntity.entities.get(k);
-                    if (finded != null)
-                        e.deletedAtColumn = finded.columnDeletedAt;
-                }
+                EntityMetaData found = ScannerEntity.entitiesRegistryByKey.get(k);
+                if (found != null)
+                    e.deletedAtColumn = found.columnDeletedAt;
             }
         }
         return s;
@@ -51,17 +55,20 @@ public class CommonRunner<T> {
 
     protected int commonInsert(Class<T> clazz, EntityMetaData processedEntity)
             throws InvalidSqlGenerationException, SQLException {
+
         if (processedEntity.getColumnCreatedAt() != null) {
-            processedEntity.getColumns().add(processedEntity.getColumnCreatedAt());
+            jormLogger.debug(processedEntity.getColumnCreatedAt());
             processedEntity.getValues().add(new Date(new java.util.Date().getTime()));
         }
-        String sql = insertStatement(clazz, processedEntity).write();
-        if (processedEntity.getColumnCreatedAt() != null)
-            processedEntity.getValues().add(new Date(System.currentTimeMillis()));
 
+        String sql = insertStatement(clazz, processedEntity).write();
+        jormLogger.info(sql);
+        jormLogger.startRecord(alias);
         PreparedStatement ps = getConnection().prepareStatement(sql);
-        JDBCUtils.addParameters(ps, processedEntity.getValues());
-        return ps.executeUpdate();
+        jdbcUtils.addParameters(ps, processedEntity.getValues());
+        int res =  ps.executeUpdate();
+        jormLogger.endRecord(alias);
+        return res;
     }
 
     Insert insertStatement(Class<T> clazz, EntityMetaData processedEntity) {
@@ -70,7 +77,7 @@ public class CommonRunner<T> {
                 .setTable(processedEntity.tableName)
                 .setValues(processedEntity.getValues().toArray(new Object[0]));
         if (processedEntity.columnCreatedAt != null)
-            insert.setColumns(processedEntity.columnCreatedAt);
+            insert.setColumns(", " + processedEntity.columnCreatedAt);
         return insert;
     }
 
@@ -79,6 +86,10 @@ public class CommonRunner<T> {
             Class<T> clazz,
             List<T> data,
             int batchSize) throws SQLException, InvalidSqlGenerationException {
+        // Ensure createdAt placeholder is included in the INSERT SQL
+        if (tableMeta.getColumnCreatedAt() != null) {
+            tableMeta.getValues().add(new Date(System.currentTimeMillis()));
+        }
         String sql = insertStatement(clazz, tableMeta).write();
 
         long count = 0;
@@ -91,7 +102,7 @@ public class CommonRunner<T> {
             if (tableMeta.getColumnCreatedAt() != null)
                 e.getValues().add(new Date(System.currentTimeMillis()));
 
-            JDBCUtils.addParameters(ps, e.getValues());
+            jdbcUtils.addParameters(ps, e.getValues());
 
             ps.addBatch();
 

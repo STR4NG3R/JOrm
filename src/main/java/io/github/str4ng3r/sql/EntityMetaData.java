@@ -1,5 +1,6 @@
-package org.example.sql;
+package io.github.str4ng3r.sql;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -14,6 +15,24 @@ public class EntityMetaData {
     String columnUpdatedAt;
     String columnDeletedAt;
     Object columnIdValue;
+
+    /**
+     * Returns a new EntityMetaData with the structural metadata copied (table, columns, annotations)
+     * and a fresh empty values list. Used to avoid mutating the shared registry object per operation.
+     */
+    public EntityMetaData cloneStructure() {
+        EntityMetaData clone = new EntityMetaData();
+        clone.tableName = this.tableName;
+        clone.schema = this.schema;
+        clone.db = this.db;
+        clone.columnId = this.columnId;
+        clone.columnCreatedAt = this.columnCreatedAt;
+        clone.columnUpdatedAt = this.columnUpdatedAt;
+        clone.columnDeletedAt = this.columnDeletedAt;
+        clone.columns = new ArrayList<>(this.columns); // structural copy
+        clone.values = new ArrayList<>();               // fresh per operation
+        return clone;
+    }
 
     @Override
     public boolean equals(Object o) {
