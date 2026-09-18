@@ -5,11 +5,12 @@ import io.github.str4ng3r.*;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 class ScannerEntity {
-    static Map<Class<?>, EntityMetaData> entitiesRegistry = new HashMap<>();
-    static Map<String, EntityMetaData> entitiesRegistryByKey = new HashMap<>();
+    static Map<Class<?>, EntityMetaData> entitiesRegistry = new ConcurrentHashMap<>();
+    static Map<String, EntityMetaData> entitiesRegistryByKey = new ConcurrentHashMap<>();
 
 
     static void registryEntity(Class<?>... entityClasses) {
@@ -17,18 +18,22 @@ class ScannerEntity {
             if (!clazz.isAnnotationPresent(Entity.class)) continue;
             Entity e = clazz.getAnnotation(Entity.class);
 
-            entitiesRegistry.computeIfAbsent(clazz, (c) -> {
-
-                EntityMetaData entityMetaData = new EntityMetaData();
-                entityMetaData.tableName = e.name();
-                entityMetaData.schema = e.schema();
-                entityMetaData.db = e.database();
-                getColumnsFromEntity(c, entityMetaData);
-                buildReflectionCache(c, entityMetaData);
-                entitiesRegistryByKey.put(createKey(entityMetaData.tableName, entityMetaData.db, entityMetaData.schema), entityMetaData);
-
-                return entityMetaData;
+            EntityMetaData entityMetaData = entitiesRegistry.computeIfAbsent(clazz, (c) -> {
+                EntityMetaData meta = new EntityMetaData();
+                meta.tableName = e.name();
+                meta.schema = e.schema();
+                meta.db = e.database();
+                getColumnsFromEntity(c, meta);
+                buildReflectionCache(c, meta);
+                return meta;
             });
+
+            // Populate the secondary index outside the computeIfAbsent mapping function.
+            // Modifying another ConcurrentHashMap inside the lambda is unsafe; doing it here
+            // is idempotent (putIfAbsent) and avoids nested-update hazards.
+            entitiesRegistryByKey.putIfAbsent(
+                    createKey(entityMetaData.tableName, entityMetaData.db, entityMetaData.schema),
+                    entityMetaData);
         }
     }
 
