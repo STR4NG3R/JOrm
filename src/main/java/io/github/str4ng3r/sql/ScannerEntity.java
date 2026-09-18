@@ -2,6 +2,7 @@ package io.github.str4ng3r.sql;
 
 import io.github.str4ng3r.*;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.*;
 import java.util.function.Consumer;
@@ -23,10 +24,34 @@ class ScannerEntity {
                 entityMetaData.schema = e.schema();
                 entityMetaData.db = e.database();
                 getColumnsFromEntity(c, entityMetaData);
+                buildReflectionCache(c, entityMetaData);
                 entitiesRegistryByKey.put(createKey(entityMetaData.tableName, entityMetaData.db, entityMetaData.schema), entityMetaData);
 
                 return entityMetaData;
             });
+        }
+    }
+
+    /**
+     * Precomputes the no-arg constructor and an accessible Field map keyed by field name,
+     * so mapping a ResultSet no longer calls getDeclaredConstructor/getDeclaredField per row/cell.
+     */
+    static void buildReflectionCache(Class<?> clazz, EntityMetaData meta) {
+        Map<String, Field> fields = new HashMap<>();
+        // Walk the class hierarchy so inherited fields are also mappable.
+        for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field field : c.getDeclaredFields()) {
+                field.setAccessible(true);
+                fields.putIfAbsent(field.getName(), field);
+            }
+        }
+        meta.fieldCache = fields;
+        try {
+            Constructor<?> ctor = clazz.getDeclaredConstructor();
+            ctor.setAccessible(true);
+            meta.noArgConstructor = ctor;
+        } catch (NoSuchMethodException ignored) {
+            // No no-arg constructor: mapFromResultSet will fall back to reflection.
         }
     }
 

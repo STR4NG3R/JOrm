@@ -1,7 +1,10 @@
 package io.github.str4ng3r.sql;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public class EntityMetaData {
@@ -16,9 +19,14 @@ public class EntityMetaData {
     String columnDeletedAt;
     Object columnIdValue;
 
+    // Reflection caches, populated once at registration time and shared read-only.
+    Map<String, Field> fieldCache;
+    Constructor<?> noArgConstructor;
+
     /**
      * Returns a new EntityMetaData with the structural metadata copied (table, columns, annotations)
      * and a fresh empty values list. Used to avoid mutating the shared registry object per operation.
+     * The reflection caches are shared by reference since they are immutable after registration.
      */
     public EntityMetaData cloneStructure() {
         EntityMetaData clone = new EntityMetaData();
@@ -31,7 +39,17 @@ public class EntityMetaData {
         clone.columnDeletedAt = this.columnDeletedAt;
         clone.columns = new ArrayList<>(this.columns); // structural copy
         clone.values = new ArrayList<>();               // fresh per operation
+        clone.fieldCache = this.fieldCache;             // shared read-only
+        clone.noArgConstructor = this.noArgConstructor; // shared read-only
         return clone;
+    }
+
+    public Map<String, Field> getFieldCache() {
+        return fieldCache;
+    }
+
+    public Constructor<?> getNoArgConstructor() {
+        return noArgConstructor;
     }
 
     @Override
