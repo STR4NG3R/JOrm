@@ -18,6 +18,15 @@ public class JDBCUtils {
         this.jormLogger = jormLogger;
     }
 
+    /**
+     * Maps an already-open ResultSet into a result. The ResultSet lifecycle is
+     * owned by JDBCUtils, so implementations must not close it.
+     */
+    @FunctionalInterface
+    public interface ResultSetMapper<R> {
+        R map(ResultSet rs) throws SQLException;
+    }
+
     public void addParameters(PreparedStatement ps, List<Object> parameters) throws SQLException {
         ps.clearParameters();
         for (int i = 0; i < parameters.size(); i++) ps.setObject(i + 1, parameters.get(i));
@@ -37,30 +46,33 @@ public class JDBCUtils {
             throws SQLException {
         this.jormLogger.info(sqlParameter.toString());
         this.jormLogger.startRecord("count-" + alias, sqlParameter.getSql());
-        PreparedStatement ps = connection.prepareStatement(s.getCount(sqlParameter.getSql()));
-        addParameters(ps, sqlParameter.getListParameters());
-        ResultSet rs = ps.executeQuery();
-        if (rs.next())
-            return rs.getInt(1);
-        this.jormLogger.endRecord(alias);
-        return 0;
+        try (PreparedStatement ps = connection.prepareStatement(s.getCount(sqlParameter.getSql()))) {
+            addParameters(ps, sqlParameter.getListParameters());
+            try (ResultSet rs = ps.executeQuery()) {
+                int count = rs.next() ? rs.getInt(1) : 0;
+                this.jormLogger.endRecord(alias);
+                return count;
+            }
+        }
     }
 
-    public ResultSet createResultSet(Selector selector, Connection connection, String alias)
-            throws SQLException, InvalidSqlGenerationException {
-        return createResultSet(selector, connection, alias, null);
-    }
-
-    public ResultSet createResultSet(Selector selector, Connection connection, String alias, String deletedAtColumn)
-            throws SQLException, InvalidSqlGenerationException {
+    /**
+     * Runs the selector query and maps the ResultSet through the given mapper,
+     * closing the PreparedStatement and ResultSet before returning.
+     */
+    public <R> R query(Selector selector, Connection connection, String alias, String deletedAtColumn,
+            ResultSetMapper<R> mapper) throws SQLException, InvalidSqlGenerationException {
         SqlParameter sqlParameter = selector.getSqlAndParameters();
         String sql = applySoftDeleteFilter(sqlParameter.getSql(), deletedAtColumn);
         this.jormLogger.info(sql);
         this.jormLogger.startRecord(alias, sql);
-        PreparedStatement ps = connection.prepareStatement(sql);
-        addParameters(ps, sqlParameter.getListParameters());
-        ResultSet rs = ps.executeQuery();
-        jormLogger.endRecord(alias);
-        return rs;
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            addParameters(ps, sqlParameter.getListParameters());
+            try (ResultSet rs = ps.executeQuery()) {
+                R result = mapper.map(rs);
+                jormLogger.endRecord(alias);
+                return result;
+            }
+        }
     }
 }

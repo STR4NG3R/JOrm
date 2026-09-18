@@ -60,6 +60,7 @@ public class Runner<T> extends CommonRunner {
      * Disables auto-commit and optionally sets the isolation level.
      */
     public Runner<T> beginTransaction() throws SQLException {
+        autoCommitBeforeTx = getConnection().getAutoCommit();
         getConnection().setAutoCommit(false);
         return this;
     }
@@ -69,26 +70,37 @@ public class Runner<T> extends CommonRunner {
      */
     public Runner<T> beginTransaction(ISOLATION isolation) throws SQLException {
         getConnection().setTransactionIsolation(isolation.isolationValue);
+        autoCommitBeforeTx = getConnection().getAutoCommit();
         getConnection().setAutoCommit(false);
         return this;
     }
 
     /**
-     * Commits the current transaction.
+     * Commits the current transaction and restores the connection's original
+     * autoCommit state (instead of forcing it to true).
      */
     public Runner<T> commit() throws SQLException {
         getConnection().commit();
-        getConnection().setAutoCommit(true);
+        restoreAutoCommit();
         return this;
     }
 
     /**
-     * Rolls back the current transaction.
+     * Rolls back the current transaction and restores the connection's original
+     * autoCommit state (instead of forcing it to true).
      */
     public Runner<T> rollback() throws SQLException {
         getConnection().rollback();
-        getConnection().setAutoCommit(true);
+        restoreAutoCommit();
         return this;
+    }
+
+    private void restoreAutoCommit() throws SQLException {
+        // Restore the state captured at beginTransaction; default to true if the
+        // transaction was managed manually without going through beginTransaction.
+        boolean restore = autoCommitBeforeTx == null ? true : autoCommitBeforeTx;
+        getConnection().setAutoCommit(restore);
+        autoCommitBeforeTx = null;
     }
 
     /**
@@ -169,19 +181,19 @@ public class Runner<T> extends CommonRunner {
     public List<T> select(Selector selector, Function<ResultSet, T> consumer)
             throws InvalidSqlGenerationException, SQLException {
         String deletedAt = withDeleted ? null : firstTableDeletedAtColumn(selector);
-        jormLogger.startRecord(alias);
-        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), alias, deletedAt);
-        ArrayList<T> list = new ArrayList<>();
-        while (rs.next())
-            list.add(consumer.apply(rs));
-        return list;
+        return jdbcUtils.query(selector, getConnection(), alias, deletedAt, rs -> {
+            ArrayList<T> list = new ArrayList<>();
+            while (rs.next())
+                list.add(consumer.apply(rs));
+            return list;
+        });
     }
 
     public List<T> select(Selector selector, Class<T> clazz) throws SQLException, InvalidSqlGenerationException {
         String deletedAt = withDeleted ? null : firstTableDeletedAtColumn(selector);
-        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), alias, deletedAt);
         Mapper<T> mapper = new Mapper<>(jormLogger, alias);
-        return mapper.mapFromResultSet(rs, clazz);
+        return jdbcUtils.query(selector, getConnection(), alias, deletedAt,
+                rs -> mapper.mapFromResultSet(rs, clazz));
     }
 
     public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector, Class<T> clazz)
@@ -190,8 +202,10 @@ public class Runner<T> extends CommonRunner {
         SqlParameter sqlParameter = selector.getSqlAndParameters();
         int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, alias);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
-        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), alias, deletedAt);
-        return new Template<List<T>>(sqlParameter, new Mapper<T>(jormLogger, alias).mapFromResultSet(rs, clazz));
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        List<T> data = jdbcUtils.query(selector, getConnection(), alias, deletedAt,
+                rs -> mapper.mapFromResultSet(rs, clazz));
+        return new Template<>(sqlParameter, data);
     }
 
     public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector,
@@ -201,22 +215,25 @@ public class Runner<T> extends CommonRunner {
         SqlParameter sqlParameter = selector.getSqlAndParameters();
         int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, alias);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
-        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), alias, deletedAt);
-        ArrayList<T> list = new ArrayList<>();
-        while (rs.next())
-            list.add(consumer.apply(rs));
-        return new Template<>(sqlParameter, list);
+        List<T> data = jdbcUtils.query(selector, getConnection(), alias, deletedAt, rs -> {
+            ArrayList<T> list = new ArrayList<>();
+            while (rs.next())
+                list.add(consumer.apply(rs));
+            return list;
+        });
+        return new Template<>(sqlParameter, data);
     }
 
     public int update(Update update) throws InvalidSqlGenerationException, SQLException {
         SqlParameter sqlParameter = update.getSqlAndParameters();
         jormLogger.info(sqlParameter.toString());
         jormLogger.startRecord(alias);
-        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.getSql());
-        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
-        int res = ps.executeUpdate();
-        jormLogger.endRecord(alias);
-        return res;
+        try (PreparedStatement ps = getConnection().prepareStatement(sqlParameter.getSql())) {
+            jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
+            int res = ps.executeUpdate();
+            jormLogger.endRecord(alias);
+            return res;
+        }
     }
 
     protected int commonUpdate(Update update, EntityMetaData processedEntity)
@@ -237,11 +254,12 @@ public class Runner<T> extends CommonRunner {
         SqlParameter sqlParameter = update.getSqlAndParameters();
         jormLogger.info(sqlParameter.toString());
         jormLogger.startRecord(alias);
-        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.getSql());
-        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
-        int res = ps.executeUpdate();
-        jormLogger.endRecord(alias);
-        return res;
+        try (PreparedStatement ps = getConnection().prepareStatement(sqlParameter.getSql())) {
+            jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
+            int res = ps.executeUpdate();
+            jormLogger.endRecord(alias);
+            return res;
+        }
     }
 
     /**
@@ -260,9 +278,10 @@ public class Runner<T> extends CommonRunner {
             }
         }
 
-        PreparedStatement ps = getConnection().prepareStatement(deleteParam.getSql());
-        jdbcUtils.addParameters(ps, deleteParam.getListParameters());
-        return ps.executeUpdate();
+        try (PreparedStatement stmt = getConnection().prepareStatement(deleteParam.getSql())) {
+            jdbcUtils.addParameters(stmt, deleteParam.getListParameters());
+            return stmt.executeUpdate();
+        }
     }
 
     /**
@@ -282,11 +301,12 @@ public class Runner<T> extends CommonRunner {
 
         jormLogger.info(updateSql);
         jormLogger.startRecord(alias);
-        PreparedStatement ps = getConnection().prepareStatement(updateSql);
-        jdbcUtils.addParameters(ps, params);
-        int res = ps.executeUpdate();
-        jormLogger.endRecord(alias);
-        return res;
+        try (PreparedStatement ps = getConnection().prepareStatement(updateSql)) {
+            jdbcUtils.addParameters(ps, params);
+            int res = ps.executeUpdate();
+            jormLogger.endRecord(alias);
+            return res;
+        }
     }
 
     static String parseFirstTableFromDelete(String sql) {
@@ -322,11 +342,12 @@ public class Runner<T> extends CommonRunner {
 
             jormLogger.info(updateSql);
             jormLogger.startRecord(alias);
-            PreparedStatement ps = getConnection().prepareStatement(updateSql);
-            jdbcUtils.addParameters(ps, params);
-            int res = ps.executeUpdate();
-            jormLogger.endRecord(alias);
-            return res;
+            try (PreparedStatement ps = getConnection().prepareStatement(updateSql)) {
+                jdbcUtils.addParameters(ps, params);
+                int res = ps.executeUpdate();
+                jormLogger.endRecord(alias);
+                return res;
+            }
         }
 
         Delete delete = new Delete();
@@ -336,9 +357,10 @@ public class Runner<T> extends CommonRunner {
 
         SqlParameter sqlParameter = delete.getSqlAndParameters();
         jormLogger.info(sqlParameter.toString());
-        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.getSql());
-        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
-        return ps.executeUpdate();
+        try (PreparedStatement ps = getConnection().prepareStatement(sqlParameter.getSql())) {
+            jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
+            return ps.executeUpdate();
+        }
     }
 
     public int insert(Class<T> clazz, T data)
