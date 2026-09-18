@@ -1,0 +1,282 @@
+package io.github.str4ng3r.sql;
+
+import io.github.str4ng3r.common.*;
+import io.github.str4ng3r.exceptions.InvalidCurrentPageException;
+import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
+
+public class Runner<T> extends CommonRunner {
+
+    public Runner(Connection connection) {
+        super(connection);
+        withDeleted = true;
+    }
+
+    public Runner<T> enableMetrics(String alias) {
+        this.alias = alias;
+        jormLogger.setEnableMetrics(true);
+        return this;
+    }
+
+    public Runner<T> enableLogs() {
+        jormLogger.setEnable(true);
+        return this;
+    }
+
+    public Runner<T> hardDelete(boolean hardDelete) {
+        this.hardDelete = hardDelete;
+        return this;
+    }
+
+    public Runner<T> withDeleted(boolean withDeleted) {
+        this.withDeleted = withDeleted;
+        return this;
+    }
+
+    // -------------------------------------------------------------------------
+    // Transactions
+    // -------------------------------------------------------------------------
+
+    public enum ISOLATION {
+        NONE(Connection.TRANSACTION_NONE),
+        READ_UNCOMMITTED(Connection.TRANSACTION_READ_UNCOMMITTED),
+        READ_COMMITTED(Connection.TRANSACTION_READ_COMMITTED),
+        REPEATABLE_READ(Connection.TRANSACTION_REPEATABLE_READ),
+        SERIALIZABLE(Connection.TRANSACTION_SERIALIZABLE);
+
+        final int isolationValue;
+
+        ISOLATION(int value) {
+            isolationValue = value;
+        }
+    }
+
+    /**
+     * Begins a transaction on the underlying connection.
+     * Disables auto-commit and optionally sets the isolation level.
+     */
+    public Runner<T> beginTransaction() throws SQLException {
+        getConnection().setAutoCommit(false);
+        return this;
+    }
+
+    /**
+     * Begins a transaction with a specific isolation level.
+     */
+    public Runner<T> beginTransaction(ISOLATION isolation) throws SQLException {
+        getConnection().setTransactionIsolation(isolation.isolationValue);
+        getConnection().setAutoCommit(false);
+        return this;
+    }
+
+    /**
+     * Commits the current transaction.
+     */
+    public Runner<T> commit() throws SQLException {
+        getConnection().commit();
+        getConnection().setAutoCommit(true);
+        return this;
+    }
+
+    /**
+     * Rolls back the current transaction.
+     */
+    public Runner<T> rollback() throws SQLException {
+        getConnection().rollback();
+        getConnection().setAutoCommit(true);
+        return this;
+    }
+
+    /**
+     * Executes a block of operations inside a transaction.
+     * Commits automatically on success, rolls back on any exception.
+     *
+     * Example:
+     * <pre>
+     * new Runner&lt;Void&gt;(connection).transaction(runner -> {
+     *     runner.insert(UserDao.class, user);
+     *     runner.insert(OrderDao.class, order);
+     * });
+     * </pre>
+     */
+    public void transaction(TransactionCallback<T> callback) throws SQLException {
+        beginTransaction();
+        try {
+            callback.execute(this);
+            commit();
+        } catch (Exception e) {
+            rollback();
+            throw new SQLException("Transaction rolled back due to: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Same as {@link #transaction(TransactionCallback)} but with a specific isolation level.
+     */
+    public void transaction(ISOLATION isolation, TransactionCallback<T> callback) throws SQLException {
+        beginTransaction(isolation);
+        try {
+            callback.execute(this);
+            commit();
+        } catch (Exception e) {
+            rollback();
+            throw new SQLException("Transaction rolled back due to: " + e.getMessage(), e);
+        }
+    }
+
+    @FunctionalInterface
+    public interface TransactionCallback<T> {
+        void execute(Runner<T> runner) throws Exception;
+    }
+
+    public List<T> select(Selector selector, Function<ResultSet, T> consumer)
+            throws InvalidSqlGenerationException, SQLException {
+        commonSelect(selector);
+        jormLogger.startRecord(alias);
+        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), alias);
+        ArrayList<T> list = new ArrayList<>();
+        while (rs.next())
+            list.add(consumer.apply(rs));
+        return list;
+    }
+
+    public List<T> select(Selector selector, Class<T> clazz) throws SQLException, InvalidSqlGenerationException {
+        commonSelect(selector);
+        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), alias);
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        return mapper.mapFromResultSet(rs, clazz);
+    }
+
+    public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector, Class<T> clazz)
+            throws InvalidSqlGenerationException, SQLException, InvalidCurrentPageException {
+        commonSelect(selector);
+        SqlParameter sqlParameter = selector.getSqlAndParameters();
+        int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, alias);
+        selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
+        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), alias);
+        return new Template<List<T>>(sqlParameter, new Mapper<T>(jormLogger, alias).mapFromResultSet(rs, clazz));
+    }
+
+    public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector,
+            Function<ResultSet, T> consumer)
+            throws SQLException, InvalidSqlGenerationException, InvalidCurrentPageException {
+        commonSelect(selector);
+        SqlParameter sqlParameter = selector.getSqlAndParameters();
+        int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, alias);
+        selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
+        ResultSet rs = jdbcUtils.createResultSet(selector, getConnection(), alias);
+        ArrayList<T> list = new ArrayList<>();
+        while (rs.next())
+            list.add(consumer.apply(rs));
+        return new Template<>(sqlParameter, list);
+    }
+
+    public int update(Update update) throws InvalidSqlGenerationException, SQLException {
+        SqlParameter sqlParameter = update.getSqlAndParameters();
+        jormLogger.info(sqlParameter.toString());
+        jormLogger.startRecord(alias);
+        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
+        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
+        int res = ps.executeUpdate();
+        jormLogger.endRecord(alias);
+        return res;
+    }
+
+    protected int commonUpdate(Update update, EntityMetaData processedEntity)
+            throws InvalidSqlGenerationException, SQLException {
+        for (int i = 0; i < processedEntity.getColumns().size(); i++) {
+            Object value = processedEntity.getValues().get(i);
+            if (value != null) {
+                String column = processedEntity.getColumns().get(i);
+                update.setColumnsValuesToUpdate((cv) -> cv.put(column, value));
+            }
+        }
+
+        if (processedEntity.getColumnUpdatedAt() != null) {
+            update.setColumnsValuesToUpdate(
+                    p -> p.put(processedEntity.getColumnUpdatedAt(), new Date(new java.util.Date().getTime())));
+        }
+
+        SqlParameter sqlParameter = update.getSqlAndParameters();
+        jormLogger.info(sqlParameter.toString());
+        jormLogger.startRecord(alias);
+        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
+        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
+        int res = ps.executeUpdate();
+        jormLogger.endRecord(alias);
+        return res;
+    }
+
+    public int delete(Delete delete, boolean hardDelete) throws InvalidSqlGenerationException, SQLException {
+        if (!hardDelete) {
+            EntityMetaData found = ScannerEntity.getEntityFromTableName(delete.getTables().get(0));
+            if (found != null && found.columnDeletedAt != null)
+                delete.setDeletedAtColumn(found.columnDeletedAt);
+        }
+
+        delete.setHardDelete(hardDelete);
+        SqlParameter sqlParameter = delete.getSqlAndParameters();
+        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
+        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
+        return ps.executeUpdate();
+    }
+
+    public int delete(T data, boolean hardDelete) throws InvalidSqlGenerationException, SQLException {
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        EntityMetaData processedEntity = mapper.mapFromEntity(data);
+
+        Delete delete = new Delete();
+        delete.from(ScannerEntity.createKey(processedEntity.tableName, processedEntity.db, processedEntity.schema));
+        delete.where(processedEntity.columnId + " = :id",
+                (p) -> p.put(processedEntity.columnId, processedEntity.columnIdValue));
+        if (!hardDelete) {
+            if (processedEntity.columnDeletedAt != null)
+                delete.setDeletedAtColumn(processedEntity.columnDeletedAt);
+        }
+        delete.setHardDelete(hardDelete);
+
+        SqlParameter sqlParameter = delete.getSqlAndParameters();
+        jormLogger.info(sqlParameter.toString());
+        PreparedStatement ps = getConnection().prepareStatement(sqlParameter.sql);
+        jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
+        return ps.executeUpdate();
+    }
+
+    public int insert(Class<T> clazz, T data)
+            throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        EntityMetaData processedEntity = mapper.mapFromEntity(data);
+        String columns = String.join(",", processedEntity.getColumns());
+
+        if (processedEntity.getColumnIdValue() != null) {
+            List<T> result = select(new Selector()
+                    .select(
+                            processedEntity.getTableName(),
+                            columns)
+                    .where(
+                            processedEntity.getColumnId() + " = :id",
+                            (p) -> p.put("id", processedEntity.getColumnIdValue())),
+                    clazz);
+            if (!result.isEmpty()) {
+                Update u = new Update().from(processedEntity.getTableName())
+                        .where(
+                                processedEntity.getColumnId() + " = :id",
+                                (p) -> p.put("id", processedEntity.getColumnIdValue()));
+                return commonUpdate(u, processedEntity);
+            }
+        }
+
+        return commonInsert(clazz, processedEntity);
+    }
+
+    public void insert(Class<T> clazz, List<T> data, int batchSize)
+            throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
+        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        EntityMetaData processedEntity = mapper.mapFromEntity(data.get(0));
+        commonBatchInsert(processedEntity, clazz, data, batchSize);
+    }
+}
