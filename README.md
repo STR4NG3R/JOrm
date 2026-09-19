@@ -435,6 +435,253 @@ try {
 
 ---
 
+## Concurrency & Connection Management
+
+JOrm operates directly on a raw JDBC `Connection` — it never opens or closes it, it only uses it. This keeps the library tiny and predictable, but it means **connection lifecycle and concurrency are your responsibility**.
+
+### The threading model in one rule
+
+> **A `Runner` and its `Connection` are not thread-safe. Use one `Runner` (and one `Connection`) per thread / per request.**
+
+What *is* safe to share across threads:
+
+- The entity registry and reflection cache (`ConcurrentHashMap`, populated idempotently)
+- The global [Metrics](#metrics) singleton
+
+What is **not** safe to share:
+
+- A `Runner` instance — it holds mutable per-instance state (`alias`, `withDeleted`, `hardDelete`, transaction flags)
+- A `java.sql.Connection` — JDBC connections are single-threaded by contract, and transactions mutate `autoCommit` on the connection
+
+So in any concurrent application you should pull a fresh connection from a **connection pool** for each unit of work, wrap it in a `Runner`, and release it when done. Creating a `Runner` is cheap — it's just a thin wrapper.
+
+### Plain JDBC
+
+Use a pool (HikariCP is the recommended choice — small, fast, and aligned with JOrm's philosophy) and grab one connection per operation. The try-with-resources block returns the connection to the pool automatically:
+
+```java
+// Once, at application startup — a single shared pool
+HikariConfig config = new HikariConfig();
+config.setJdbcUrl("jdbc:postgresql://localhost:5432/mydb");
+config.setUsername("user");
+config.setPassword("pass");
+config.setMaximumPoolSize(10);
+HikariDataSource dataSource = new HikariDataSource(config);
+```
+
+```java
+// Per operation / per thread — never share this connection
+try (Connection conn = dataSource.getConnection()) {
+    List<UserDao> users = new Runner<UserDao>(conn)
+            .select(selector, UserDao.class);
+} // connection is returned to the pool here
+```
+
+> Do **not** cache a single `Connection` in a static field and reuse it from multiple threads. Always take one from the pool per unit of work.
+
+### Spring
+
+Spring already manages a pooled `DataSource` (HikariCP by default). Inject it and open a connection per operation. Let Spring's `DataSourceUtils` hand you the connection so JOrm participates in Spring-managed transactions when present:
+
+```java
+@Repository
+public class UserRepository {
+
+    private final DataSource dataSource;
+
+    public UserRepository(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+
+    public List<UserDao> findAll(Selector selector) throws SQLException {
+        // DataSourceUtils returns the transaction-bound connection if one exists,
+        // otherwise a fresh pooled connection.
+        Connection conn = DataSourceUtils.getConnection(dataSource);
+        try {
+            return new Runner<UserDao>(conn).select(selector, UserDao.class);
+        } finally {
+            // Releases to the pool only if it's not bound to an active transaction.
+            DataSourceUtils.releaseConnection(conn, dataSource);
+        }
+    }
+}
+```
+
+For write paths you can rely on Spring's declarative transactions and let JOrm run inside them:
+
+```java
+@Transactional
+public void createUser(UserDao user) throws SQLException {
+    Connection conn = DataSourceUtils.getConnection(dataSource);
+    try {
+        new Runner<UserDao>(conn).insert(UserDao.class, user);
+        // Spring commits/rolls back the transaction; don't call commit() here.
+    } finally {
+        DataSourceUtils.releaseConnection(conn, dataSource);
+    }
+}
+```
+
+> When running inside a Spring `@Transactional` method, let **Spring** own commit/rollback. Use JOrm's own `transaction(...)` / `beginTransaction()` only when you are managing the connection yourself (plain JDBC, no Spring transaction manager).
+
+#### Using JOrm in a `@Service`
+
+The `@Repository` pattern above is not the only option. Inside a `@Service` you have three valid approaches depending on **who owns the transaction**.
+
+**Option A — `@Service` + Spring `@Transactional` (Spring owns the transaction).**
+The idiomatic choice when you already use Spring's transactional stack. Take the connection with `DataSourceUtils` so every operation joins the same Spring-managed transaction, and let Spring commit/rollback. Do **not** call `commit()`/`rollback()` yourself.
+
+```java
+@Service
+public class UserService {
+
+    private final DataSource dataSource;
+
+    public UserService(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+
+    @Transactional
+    public void register(UserDao user, OrderDao firstOrder) throws SQLException {
+        Connection conn = DataSourceUtils.getConnection(dataSource);
+        try {
+            new Runner<UserDao>(conn).insert(UserDao.class, user);
+            new Runner<OrderDao>(conn).insert(OrderDao.class, firstOrder);
+            // No commit/rollback here — Spring does it when the method returns.
+            // Any thrown exception triggers an automatic rollback.
+        } finally {
+            DataSourceUtils.releaseConnection(conn, dataSource);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserDao> findAll(Selector selector) throws SQLException {
+        Connection conn = DataSourceUtils.getConnection(dataSource);
+        try {
+            return new Runner<UserDao>(conn).select(selector, UserDao.class);
+        } finally {
+            DataSourceUtils.releaseConnection(conn, dataSource);
+        }
+    }
+}
+```
+
+Use this when a transaction spans multiple repositories/services, or when you mix JOrm with JPA/`JdbcTemplate` in the same transaction.
+
+**Option B — `@Service` without `@Transactional` (JOrm owns the transaction).**
+If you'd rather not depend on Spring's transaction manager, pull a connection from the pool and use JOrm's own `transaction(...)`. Here JOrm commits/rolls back.
+
+```java
+@Service
+public class UserService {
+
+    private final DataSource dataSource;
+
+    public UserService(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+
+    public void register(UserDao user, OrderDao firstOrder) throws SQLException {
+        try (Connection conn = dataSource.getConnection()) {   // pooled connection
+            new Runner<Void>(conn).transaction(runner -> {
+                runner.insert(UserDao.class, user);
+                runner.insert(OrderDao.class, firstOrder);
+                // any exception here triggers automatic rollback
+            });
+        }
+    }
+
+    // With an isolation level
+    public void registerSerializable(UserDao user) throws SQLException {
+        try (Connection conn = dataSource.getConnection()) {
+            new Runner<Void>(conn).transaction(Runner.ISOLATION.SERIALIZABLE, runner -> {
+                runner.insert(UserDao.class, user);
+            });
+        }
+    }
+}
+```
+
+Here you use `dataSource.getConnection()` directly (not `DataSourceUtils`), because you are **not** inside a Spring transaction. Do not combine this with `@Transactional` on the same method — you'd have two transaction managers fighting over the same connection.
+
+**Option C — read-only `@Service`, no explicit transaction.**
+Simple reads need no transaction at all. Just take a connection per operation and close it.
+
+```java
+@Service
+public class UserService {
+
+    private final DataSource dataSource;
+
+    public UserService(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+
+    public List<UserDao> findByRole(String role) throws SQLException {
+        Selector selector = new Selector()
+                .select("users", "id", "name", "email", "role")
+                .where("role = :role", p -> p.put("role", role));
+
+        try (Connection conn = dataSource.getConnection()) {
+            return new Runner<UserDao>(conn).select(selector, UserDao.class);
+        }
+    }
+}
+```
+
+**Choosing between them:**
+
+| Situation | Option | Who commits/rolls back | How to get the connection |
+|---|---|---|---|
+| Transaction spanning several repos/services, or mixed with JPA/`JdbcTemplate` | A (`@Transactional`) | Spring | `DataSourceUtils.getConnection` |
+| Transaction contained in one method, no Spring tx manager | B (`transaction(...)`) | JOrm | `dataSource.getConnection()` |
+| Read-only | C | nobody (autocommit) | `dataSource.getConnection()` |
+
+The one rule that never changes: **one `Connection` per operation/thread, taken from the pool** (Spring gives you HikariCP by default). Never share a `Runner` or a `Connection` across threads.
+
+### AWS Lambda / Serverless
+
+Serverless changes the trade-offs. Each Lambda execution environment handles **one request at a time**, and many short-lived containers can hammer the database with connections simultaneously. The goals are: minimize cold-start cost and avoid exhausting database connections.
+
+Recommendations:
+
+- **Keep the pool tiny** — a Lambda container serves one request at a time, so `maximumPoolSize = 1` (at most 2) is usually right. A large pool per container multiplied by hundreds of concurrent containers will exhaust the database.
+- **Initialize the pool/connection outside the handler** so it is reused across warm invocations instead of being recreated on every request.
+- **Prefer a proxy for scale** — if you run many concurrent Lambdas, put **Amazon RDS Proxy** (or your provider's equivalent) in front of the database to pool and multiplex connections centrally.
+
+```java
+public class Handler implements RequestHandler<Request, Response> {
+
+    // Created once per container (cold start), reused on warm invocations.
+    private static final HikariDataSource DATA_SOURCE = buildDataSource();
+
+    private static HikariDataSource buildDataSource() {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(System.getenv("DB_URL"));
+        config.setUsername(System.getenv("DB_USER"));
+        config.setPassword(System.getenv("DB_PASS"));
+        config.setMaximumPoolSize(1);   // one request per container at a time
+        config.setConnectionTimeout(2000);
+        return new HikariDataSource(config);
+    }
+
+    @Override
+    public Response handleRequest(Request request, Context context) {
+        try (Connection conn = DATA_SOURCE.getConnection()) {
+            List<UserDao> users = new Runner<UserDao>(conn)
+                    .select(buildSelector(request), UserDao.class);
+            return Response.ok(users);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+```
+
+JOrm's near-zero startup cost (no reflection scanning at boot, no proxy generation, no context initialization) is what makes this pattern viable in cold-start-sensitive environments — the only meaningful setup cost is the connection/pool itself.
+
+---
+
 ## Relationships (OneToMany / ManyToOne)
 
 JOrm does not provide `@OneToMany` or `@ManyToOne` annotations. This is a deliberate design decision.
