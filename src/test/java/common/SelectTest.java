@@ -3,48 +3,29 @@ package common;
 import io.github.str4ng3r.common.Constants;
 import io.github.str4ng3r.common.Join;
 import io.github.str4ng3r.common.Selector;
-import io.github.str4ng3r.common.SqlParameter;
-import io.github.str4ng3r.exceptions.InvalidCurrentPageException;
-import io.github.str4ng3r.exceptions.InvalidSqlGenerationException;
-
-import java.util.function.Consumer;
-
-
 
 /**
+ * Reusable Selector builders shared across dialect-specific integration tests.
+ * The SQL dialect is passed in so the same helpers work for Postgres, MySQL and Oracle.
+ *
  * @author Pablo Eduardo Martinez Solis
  */
 public class SelectTest {
 
-    public static void testPagination(Selector selector, String startDate, String endDate,
-                                      Integer page, Integer pageSize,
-                                      Consumer<Selector> cb
-
-    ) throws InvalidCurrentPageException, InvalidSqlGenerationException {
-        if (endDate != null)
-            selector.andWhere("u.endDate = :endDate", parameters -> parameters.put("endDate", endDate));
-
-        if (startDate != null)
-            selector.andWhere("u.startDate= :startDate", parameters -> parameters.put("startDate", startDate));
-
-        SqlParameter sql = selector.getSqlAndParameters();
-
-        cb.accept(selector);
-    }
-
-
-    public static Selector baseQueryUsers(String name, String lastName, String cp) {
+    /**
+     * Users query with optional filters and joins to address tables.
+     */
+    public static Selector baseQueryUsers(Constants.SqlDialect dialect, String name, String lastName, String cp) {
         Selector s = new Selector()
                 .select("users as u",
                         "u.id id", "u.name name", "u.email email", "u.role role",
-                        "u.email as email"
-                )
+                        "u.email as email")
                 .join(Join.LEFT, "userAddress as ua", "u.id = ua.userId")
                 .join(Join.INNER, "addresses as a", "a.id = ua.addressId")
-                .setDialect(Constants.SqlDialect.Postgres);
+                .setDialect(dialect);
 
         if (name != null)
-            s.andWhere("u.name LIKE  CONCAT('%', :name, '%')", parameters -> parameters.put("name", name));
+            s.andWhere("u.name LIKE CONCAT('%', :name, '%')", parameters -> parameters.put("name", name));
 
         if (lastName != null)
             s.andWhere("u.lastName LIKE CONCAT('%', :lastName, '%')", parameters -> parameters.put("lastName", lastName));
@@ -55,21 +36,56 @@ public class SelectTest {
         return s;
     }
 
-    public static Selector baseQueryShops() {
-        Selector s = new Selector();
-        return s.select("user u", "u.id", "u.name", "u.email", "u.role ")
-                .join(Join.LEFT, "userShop as us", "u.id = us.userId")
-                .join(Join.INNER, "shops as s", "s.id = us.shopId")
-                .setDialect(Constants.SqlDialect.Postgres);
-    }
-
-
-    public static Selector getUserById(int id) {
+    /**
+     * Simple single-table selector fetching a user by id, including audit columns.
+     */
+    public static Selector getUserById(Constants.SqlDialect dialect, int id) {
         return new Selector()
                 .select("users",
                         "id", "name", "email", "password",
                         "role", "updatedAt as \"updatedAt\"", "createdAt as \"createdAt\"",
                         "deletedAt as \"deletedAt\"")
-                .where("id = :id", (p) -> p.put("id", id));
+                .where("id = :id", (p) -> p.put("id", id))
+                .setDialect(dialect);
+    }
+
+    /**
+     * Selector over the users table with the standard column set, for paginated
+     * or WHERE-IN style queries. No joins, so soft-delete filtering is predictable.
+     */
+    public static Selector allUsers(Constants.SqlDialect dialect) {
+        return new Selector()
+                .select("users",
+                        "id", "name", "email", "role",
+                        "updatedAt as \"updatedAt\"", "createdAt as \"createdAt\"",
+                        "deletedAt as \"deletedAt\"")
+                .where("id > :id", p -> p.put("id", 0))
+                .setDialect(dialect);
+    }
+
+    /**
+     * Selector filtering by a single-column set (WHERE IN).
+     */
+    public static Selector usersByIds(Constants.SqlDialect dialect, java.util.Collection<Integer> ids) {
+        return new Selector()
+                .select("users",
+                        "id", "name", "email", "role",
+                        "updatedAt as \"updatedAt\"", "createdAt as \"createdAt\"",
+                        "deletedAt as \"deletedAt\"")
+                .where("id IN (:ids)", p -> p.put("ids", ids))
+                .setDialect(dialect);
+    }
+
+    /**
+     * Selector by email, useful to verify inserts.
+     */
+    public static Selector userByEmail(Constants.SqlDialect dialect, String email) {
+        return new Selector()
+                .select("users",
+                        "id", "name", "email", "role",
+                        "updatedAt as \"updatedAt\"", "createdAt as \"createdAt\"",
+                        "deletedAt as \"deletedAt\"")
+                .where("email = :email", p -> p.put("email", email))
+                .setDialect(dialect);
     }
 }
