@@ -627,13 +627,26 @@ Because of its **< 80KB footprint** and **single lightweight dependency**, JOrm 
 ---
 ## Testing
 
-JOrm includes integration tests powered by Testcontainers.
+JOrm includes integration tests powered by [Testcontainers](https://testcontainers.com/).
 
-Each test spins up a real PostgreSQL database inside a Docker container, ensuring that
-queries, mappings, and transactions are validated against an actual database engine.
+The entire test suite lives in a single dialect-agnostic class (`AbstractDialectTest`) and
+runs **unchanged against all three supported databases**: PostgreSQL, MySQL and Oracle. Each
+dialect (`PostgresTest`, `MysqlTest`, `OracleTest`) simply provides its own connection and
+mock schema — the actual test cases (SELECT, pagination, WHERE IN, insert/upsert, batch,
+update, soft/hard delete and transactions) are shared.
 
-This guarantees that behavior in tests matches real-world environments without requiring
-developers to install or configure PostgreSQL locally.
+Running the same assertions across three real database engines makes the library
+significantly more robust: any dialect-specific SQL generation issue, mapping mismatch or
+transactional edge case surfaces immediately, because the expected behavior is verified
+identically on every engine.
+
+Each suite spins up a real database inside a Docker container via Testcontainers, so queries,
+mappings, and transactions are validated against an actual database engine — not a mock or an
+in-memory substitute. This guarantees that behavior in tests matches real-world environments
+without requiring developers to install or configure PostgreSQL, MySQL or Oracle locally.
+
+To keep the suite fast, each dialect starts its container **once** and shares it across all
+test methods, rather than booting a fresh container per test.
 ---
 ## Why JOrm Exists
 

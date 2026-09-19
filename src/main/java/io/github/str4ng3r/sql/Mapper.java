@@ -9,6 +9,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.util.*;
 
 import static io.github.str4ng3r.sql.ScannerEntity.*;
@@ -93,7 +94,7 @@ public class Mapper<T> {
             while (rs.next()) {
                 T obj = ctor.newInstance();
                 for (int i = 1; i <= columnCount; i++) {
-                    Object columnValue = rs.getObject(i);
+                    Object columnValue = readColumn(rs, i, labels[i], fieldCache);
                     if (columnValue != null) setFieldValue(obj, labels[i], columnValue, fieldCache);
                 }
                 list.add(obj);
@@ -103,6 +104,36 @@ public class Mapper<T> {
         }
         jormLogger.endRecord("map-"+alias);
         return list;
+    }
+
+    /**
+     * Reads a column, asking the driver to convert it to the target field type
+     * when known (JDBC 4.1 getObject(int, Class)). This lets vendor-specific
+     * types (e.g. oracle.sql.TIMESTAMP) be converted to java.sql.Timestamp by the
+     * driver itself, keeping JOrm free of any vendor dependency. Falls back to a
+     * plain getObject when the type is unknown or the driver rejects the request.
+     */
+    private Object readColumn(ResultSet rs, int index, String label, Map<String, Field> fieldCache) {
+        try {
+            Field field = fieldCache != null && label != null && !label.contains(".")
+                    ? fieldCache.get(label) : null;
+            if (field != null) {
+                Class<?> t = field.getType();
+                if (t == java.sql.Timestamp.class || t == java.sql.Date.class
+                        || t == java.sql.Time.class || t == String.class
+                        || Number.class.isAssignableFrom(t)) {
+                    try {
+                        return rs.getObject(index, t);
+                    } catch (Exception ignored) {
+                        // Driver may not support getObject(int, Class) for this type.
+                    }
+                }
+            }
+            return rs.getObject(index);
+        } catch (SQLException e) {
+            jormLogger.error("Unable to read column " + index, e);
+            return null;
+        }
     }
 
     private void loopNestedClass(Object obj, List<String> columnNames, int index, Object columnValue)
@@ -144,9 +175,12 @@ public class Mapper<T> {
             Field field = fieldCache.get(columnName);
             if (field != null) {
                 try {
-                    field.set(obj, columnValue); // already setAccessible(true)
-                } catch (IllegalAccessException e) {
-                    jormLogger.error("Unable to set value on mapping", e);
+                    field.set(obj, coerce(columnValue, field.getType())); // already setAccessible(true)
+                } catch (IllegalAccessException | IllegalArgumentException e) {
+                    // A single incompatible column must not abort the whole row.
+                    jormLogger.error("Unable to set value on mapping for column '" + columnName
+                            + "' (value type " + columnValue.getClass().getName()
+                            + " -> field " + field.getType().getName() + ")", e);
                 }
                 return;
             }
@@ -155,6 +189,48 @@ public class Mapper<T> {
         }
         // No cache available: fall back to the reflective path.
         setFieldValue(obj, columnName, columnValue);
+    }
+
+    /**
+     * Coerces a JDBC-returned value to the target field type when they don't match.
+     * Notably, Oracle returns NUMBER columns as BigDecimal, which would fail to be
+     * assigned to Integer/Long/etc. fields; this bridges those common mismatches.
+     */
+    static Object coerce(Object value, Class<?> targetType) {
+        if (value == null) return null;
+        if (targetType.isInstance(value)) return value;
+
+        if (value instanceof Number) {
+            Number n = (Number) value;
+            if (targetType == Integer.class || targetType == int.class) return n.intValue();
+            if (targetType == Long.class || targetType == long.class) return n.longValue();
+            if (targetType == Double.class || targetType == double.class) return n.doubleValue();
+            if (targetType == Float.class || targetType == float.class) return n.floatValue();
+            if (targetType == Short.class || targetType == short.class) return n.shortValue();
+            if (targetType == Byte.class || targetType == byte.class) return n.byteValue();
+            if (targetType == java.math.BigDecimal.class && value instanceof java.math.BigInteger)
+                return new java.math.BigDecimal((java.math.BigInteger) value);
+            if (targetType == Boolean.class || targetType == boolean.class) return n.intValue() != 0;
+        }
+
+        // Temporal coercions. Some drivers (notably Oracle) return their own
+        // date/time subclasses or java.time types; normalize to java.sql.Timestamp/Date.
+        if (targetType == java.sql.Timestamp.class) {
+            if (value instanceof java.sql.Timestamp) return value;
+            if (value instanceof java.util.Date) return new java.sql.Timestamp(((java.util.Date) value).getTime());
+            if (value instanceof java.time.LocalDateTime) return java.sql.Timestamp.valueOf((java.time.LocalDateTime) value);
+            if (value instanceof java.time.LocalDate)
+                return java.sql.Timestamp.valueOf(((java.time.LocalDate) value).atStartOfDay());
+        }
+        if (targetType == java.sql.Date.class) {
+            if (value instanceof java.util.Date) return new java.sql.Date(((java.util.Date) value).getTime());
+            if (value instanceof java.time.LocalDate) return java.sql.Date.valueOf((java.time.LocalDate) value);
+        }
+
+        // String target from any value
+        if (targetType == String.class) return value.toString();
+        // Leave as-is; reflection will throw if truly incompatible.
+        return value;
     }
 
     private void setFieldValue(T obj, String columnName, Object columnValue) {

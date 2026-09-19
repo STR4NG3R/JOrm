@@ -18,6 +18,9 @@ public class CommonRunner<T> {
     JormLogger jormLogger = new JormLogger();
     JDBCUtils jdbcUtils = new JDBCUtils(jormLogger);
     String alias;
+    // Remembers the connection's autoCommit state before beginTransaction so
+    // commit/rollback can restore it instead of forcing true.
+    Boolean autoCommitBeforeTx;
 
     public CommonRunner(Connection connection) {
         this.connection = connection;
@@ -58,11 +61,12 @@ public class CommonRunner<T> {
         String sql = insertStatement(clazz, processedEntity).getSql();
         jormLogger.info(sql);
         jormLogger.startRecord(alias);
-        PreparedStatement ps = getConnection().prepareStatement(sql);
-        jdbcUtils.addParameters(ps, processedEntity.getValues());
-        int res =  ps.executeUpdate();
-        jormLogger.endRecord(alias);
-        return res;
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            jdbcUtils.addParameters(ps, processedEntity.getValues());
+            int res = ps.executeUpdate();
+            jormLogger.endRecord(alias);
+            return res;
+        }
     }
 
     Insert insertStatement(Class<T> clazz, EntityMetaData processedEntity) {
@@ -88,27 +92,32 @@ public class CommonRunner<T> {
         String sql = insertStatement(clazz, tableMeta).getSql();
 
         long count = 0;
-        PreparedStatement ps = getConnection().prepareStatement(sql);
+        boolean previousAutoCommit = getConnection().getAutoCommit();
         getConnection().setAutoCommit(false);
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            for (T d : data) {
+                EntityMetaData e = new EntityMetaData();
+                ScannerEntity.getValuesFromEntity(d.getClass(), d, e);
+                if (tableMeta.getColumnCreatedAt() != null)
+                    e.getValues().add(new Date(System.currentTimeMillis()));
 
-        for (T d : data) {
-            EntityMetaData e = new EntityMetaData();
-            ScannerEntity.getValuesFromEntity(d.getClass(), d, e);
-            if (tableMeta.getColumnCreatedAt() != null)
-                e.getValues().add(new Date(System.currentTimeMillis()));
+                jdbcUtils.addParameters(ps, e.getValues());
+                ps.addBatch();
 
-            jdbcUtils.addParameters(ps, e.getValues());
-
-            ps.addBatch();
-
-            if (++count % batchSize == 0) {
-                ps.executeBatch(); // flush
-                ps.clearBatch();
-                getConnection().commit(); // commit parcial
+                if (++count % batchSize == 0) {
+                    ps.executeBatch(); // flush
+                    ps.clearBatch();
+                    getConnection().commit(); // commit parcial
+                }
             }
+            ps.executeBatch();
+            getConnection().commit();
+        } catch (SQLException ex) {
+            getConnection().rollback();
+            throw ex;
+        } finally {
+            getConnection().setAutoCommit(previousAutoCommit);
         }
-        ps.executeBatch();
-        getConnection().commit();
     }
 
 }
