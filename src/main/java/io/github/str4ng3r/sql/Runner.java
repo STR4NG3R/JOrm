@@ -146,42 +146,40 @@ public class Runner<T> extends CommonRunner {
     }
 
     /**
-     * Extracts the deletedAt column for the first table in the selector's FROM clause.
-     * Returns null when the entity is not registered or has no @DeletedAt column.
-     * The table is parsed from the generated SQL since the builder no longer exposes it.
+     * Configures soft-delete filtering on the selector using querybuilder4j's
+     * native per-table support. Builds the table-name -> deletedAt-column map from
+     * ONLY the tables the selector actually references (resolved via
+     * selector.getTableNames()), so jsqb filters just those that have a @DeletedAt
+     * column. Avoids scanning the whole entity registry.
      */
-    private String firstTableDeletedAtColumn(Selector selector) throws InvalidSqlGenerationException {
-        String sql = selector.getSqlAndParameters().getSql();
-        String table = parseFirstTable(sql);
-        return table == null ? null : resolveDeletedAtColumn(table);
+    private void applySoftDelete(Selector selector) {
+        if (withDeleted) return;
+        java.util.Map<String, String> softDeleteColumns = new java.util.HashMap<>();
+        for (String table : selector.getTableNames()) {
+            String col = resolveDeletedAtColumn(table);
+            if (col != null) softDeleteColumns.put(table, col);
+        }
+        if (!softDeleteColumns.isEmpty())
+            selector.setWithDeleted(false).setSoftDeleteColumns(softDeleteColumns);
     }
 
     /**
-     * Parses the first table name after FROM (before any JOIN, WHERE, comma, etc.).
+     * Ensures the entity is registered so its soft-delete metadata is available,
+     * and returns its @DeletedAt column (or null).
      */
-    static String parseFirstTable(String sql) {
-        if (sql == null) return null;
-        String upper = sql.toUpperCase();
-        int from = upper.indexOf(" FROM ");
-        if (from < 0) return null;
-        String rest = sql.substring(from + 6).trim();
-        // stop at the first delimiter: whitespace, comma, or parenthesis
-        int end = rest.length();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == ' ' || c == ',' || c == '\n' || c == '\t' || c == '(' || c == ')') {
-                end = i;
-                break;
-            }
-        }
-        String table = rest.substring(0, end).trim();
-        return table.isEmpty() ? null : table;
+    private String deletedAtColumnFor(Class<T> clazz) {
+        if (clazz == null || !clazz.isAnnotationPresent(io.github.str4ng3r.Entity.class))
+            return null;
+        if (!ScannerEntity.entitiesRegistry.containsKey(clazz))
+            ScannerEntity.registryEntity(clazz);
+        EntityMetaData meta = ScannerEntity.entitiesRegistry.get(clazz);
+        return meta != null ? meta.columnDeletedAt : null;
     }
 
     public List<T> select(Selector selector, Function<ResultSet, T> consumer)
             throws InvalidSqlGenerationException, SQLException {
-        String deletedAt = withDeleted ? null : firstTableDeletedAtColumn(selector);
-        return jdbcUtils.query(selector, getConnection(), alias, deletedAt, rs -> {
+        applySoftDelete(selector);
+        return jdbcUtils.query(selector, getConnection(), alias, rs -> {
             ArrayList<T> list = new ArrayList<>();
             while (rs.next())
                 list.add(consumer.apply(rs));
@@ -190,20 +188,23 @@ public class Runner<T> extends CommonRunner {
     }
 
     public List<T> select(Selector selector, Class<T> clazz) throws SQLException, InvalidSqlGenerationException {
-        String deletedAt = withDeleted ? null : firstTableDeletedAtColumn(selector);
+        // Ensure the entity (and thus its soft-delete metadata) is registered.
+        deletedAtColumnFor(clazz);
+        applySoftDelete(selector);
         Mapper<T> mapper = new Mapper<>(jormLogger, alias);
-        return jdbcUtils.query(selector, getConnection(), alias, deletedAt,
+        return jdbcUtils.query(selector, getConnection(), alias,
                 rs -> mapper.mapFromResultSet(rs, clazz));
     }
 
     public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector, Class<T> clazz)
             throws InvalidSqlGenerationException, SQLException, InvalidCurrentPageException {
-        String deletedAt = withDeleted ? null : firstTableDeletedAtColumn(selector);
+        deletedAtColumnFor(clazz);
+        applySoftDelete(selector);
         SqlParameter sqlParameter = selector.getSqlAndParameters();
         int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, alias);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
         Mapper<T> mapper = new Mapper<>(jormLogger, alias);
-        List<T> data = jdbcUtils.query(selector, getConnection(), alias, deletedAt,
+        List<T> data = jdbcUtils.query(selector, getConnection(), alias,
                 rs -> mapper.mapFromResultSet(rs, clazz));
         return new Template<>(sqlParameter, data);
     }
@@ -211,11 +212,10 @@ public class Runner<T> extends CommonRunner {
     public Template<List<T>> selectPaginated(int currentPage, int pageSize, Selector selector,
             Function<ResultSet, T> consumer)
             throws SQLException, InvalidSqlGenerationException, InvalidCurrentPageException {
-        String deletedAt = withDeleted ? null : firstTableDeletedAtColumn(selector);
         SqlParameter sqlParameter = selector.getSqlAndParameters();
         int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, alias);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
-        List<T> data = jdbcUtils.query(selector, getConnection(), alias, deletedAt, rs -> {
+        List<T> data = jdbcUtils.query(selector, getConnection(), alias, rs -> {
             ArrayList<T> list = new ArrayList<>();
             while (rs.next())
                 list.add(consumer.apply(rs));
@@ -265,66 +265,29 @@ public class Runner<T> extends CommonRunner {
     /**
      * Deletes rows matching the given Delete builder.
      * When hardDelete is false and the target table has a @DeletedAt column,
-     * an UPDATE setting deletedAt = NOW() is issued instead of a physical DELETE.
+     * querybuilder4j rewrites the DELETE as an UPDATE that stamps deletedAt.
      */
     public int delete(Delete delete, boolean hardDelete) throws InvalidSqlGenerationException, SQLException {
-        SqlParameter deleteParam = delete.getSqlAndParameters();
-
         if (!hardDelete) {
-            String table = parseFirstTableFromDelete(deleteParam.getSql());
+            // Resolve the entity's @DeletedAt column from the registry using the
+            // target table name provided by jsqb (no SQL string parsing), then let
+            // jsqb generate the soft-delete UPDATE.
+            String table = delete.getBaseTableName();
             String deletedAtColumn = table == null ? null : resolveDeletedAtColumn(table);
             if (deletedAtColumn != null) {
-                return softDelete(deleteParam, table, deletedAtColumn);
+                delete.setDeletedAtColumn(deletedAtColumn).setHardDelete(false);
             }
         }
 
+        SqlParameter deleteParam = delete.getSqlAndParameters();
+        jormLogger.info(deleteParam.toString());
+        jormLogger.startRecord(alias);
         try (PreparedStatement stmt = getConnection().prepareStatement(deleteParam.getSql())) {
             jdbcUtils.addParameters(stmt, deleteParam.getListParameters());
-            return stmt.executeUpdate();
-        }
-    }
-
-    /**
-     * Converts a DELETE ... WHERE ... into UPDATE table SET deletedAt = NOW() WHERE ...
-     * reusing the WHERE clause and parameters of the original delete statement.
-     */
-    private int softDelete(SqlParameter deleteParam, String table, String deletedAtColumn)
-            throws SQLException {
-        String deleteSql = deleteParam.getSql();
-        int whereIdx = deleteSql.toUpperCase().indexOf(" WHERE ");
-        String whereClause = whereIdx >= 0 ? deleteSql.substring(whereIdx) : "";
-        String updateSql = "UPDATE " + table + " SET " + deletedAtColumn + " = ?" + whereClause;
-
-        List<Object> params = new ArrayList<>();
-        params.add(new Date(System.currentTimeMillis()));
-        params.addAll(deleteParam.getListParameters());
-
-        jormLogger.info(updateSql);
-        jormLogger.startRecord(alias);
-        try (PreparedStatement ps = getConnection().prepareStatement(updateSql)) {
-            jdbcUtils.addParameters(ps, params);
-            int res = ps.executeUpdate();
+            int res = stmt.executeUpdate();
             jormLogger.endRecord(alias);
             return res;
         }
-    }
-
-    static String parseFirstTableFromDelete(String sql) {
-        if (sql == null) return null;
-        String upper = sql.toUpperCase();
-        int from = upper.indexOf(" FROM ");
-        if (from < 0) return null;
-        String rest = sql.substring(from + 6).trim();
-        int end = rest.length();
-        for (int i = 0; i < rest.length(); i++) {
-            char c = rest.charAt(i);
-            if (c == ' ' || c == ',' || c == '\n' || c == '\t') {
-                end = i;
-                break;
-            }
-        }
-        String table = rest.substring(0, end).trim();
-        return table.isEmpty() ? null : table;
     }
 
     public int delete(T data, boolean hardDelete) throws InvalidSqlGenerationException, SQLException {
@@ -332,34 +295,24 @@ public class Runner<T> extends CommonRunner {
         EntityMetaData processedEntity = mapper.mapFromEntity(data);
         String table = ScannerEntity.createKey(processedEntity.tableName, processedEntity.db, processedEntity.schema);
 
+        Delete delete = new Delete()
+                .from(table)
+                .where(processedEntity.columnId + " = :id",
+                        (p) -> p.put(processedEntity.columnId, processedEntity.columnIdValue));
+
+        // Delegate soft delete to jsqb: it rewrites to UPDATE ... SET deletedAt = ?
         if (!hardDelete && processedEntity.columnDeletedAt != null) {
-            // soft delete: UPDATE table SET deletedAt = NOW() WHERE id = ?
-            String updateSql = "UPDATE " + table + " SET " + processedEntity.columnDeletedAt
-                    + " = ? WHERE " + processedEntity.columnId + " = ?";
-            List<Object> params = new ArrayList<>();
-            params.add(new Date(System.currentTimeMillis()));
-            params.add(processedEntity.columnIdValue);
-
-            jormLogger.info(updateSql);
-            jormLogger.startRecord(alias);
-            try (PreparedStatement ps = getConnection().prepareStatement(updateSql)) {
-                jdbcUtils.addParameters(ps, params);
-                int res = ps.executeUpdate();
-                jormLogger.endRecord(alias);
-                return res;
-            }
+            delete.setDeletedAtColumn(processedEntity.columnDeletedAt).setHardDelete(false);
         }
-
-        Delete delete = new Delete();
-        delete.from(table);
-        delete.where(processedEntity.columnId + " = :id",
-                (p) -> p.put(processedEntity.columnId, processedEntity.columnIdValue));
 
         SqlParameter sqlParameter = delete.getSqlAndParameters();
         jormLogger.info(sqlParameter.toString());
+        jormLogger.startRecord(alias);
         try (PreparedStatement ps = getConnection().prepareStatement(sqlParameter.getSql())) {
             jdbcUtils.addParameters(ps, sqlParameter.getListParameters());
-            return ps.executeUpdate();
+            int res = ps.executeUpdate();
+            jormLogger.endRecord(alias);
+            return res;
         }
     }
 

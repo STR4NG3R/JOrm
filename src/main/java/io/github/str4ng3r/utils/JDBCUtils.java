@@ -32,16 +32,6 @@ public class JDBCUtils {
         for (int i = 0; i < parameters.size(); i++) ps.setObject(i + 1, parameters.get(i));
     }
 
-    /**
-     * Appends a soft-delete filter to the SQL when deletedAtColumn is provided.
-     * Detects whether the query already has a WHERE clause to use AND or WHERE.
-     */
-    public static String applySoftDeleteFilter(String sql, String deletedAtColumn) {
-        if (deletedAtColumn == null) return sql;
-        String connector = sql.toUpperCase().contains(" WHERE ") ? " AND " : " WHERE ";
-        return sql + connector + deletedAtColumn + " IS NULL";
-    }
-
     public int getCount(Connection connection, Selector s, SqlParameter sqlParameter, String alias)
             throws SQLException {
         this.jormLogger.info(sqlParameter.toString());
@@ -58,12 +48,14 @@ public class JDBCUtils {
 
     /**
      * Runs the selector query and maps the ResultSet through the given mapper,
-     * closing the PreparedStatement and ResultSet before returning.
+     * closing the PreparedStatement and ResultSet before returning. Soft-delete
+     * filtering (if any) is already baked into the selector's generated SQL by
+     * querybuilder4j, so no post-processing of the SQL string is needed here.
      */
-    public <R> R query(Selector selector, Connection connection, String alias, String deletedAtColumn,
+    public <R> R query(Selector selector, Connection connection, String alias,
             ResultSetMapper<R> mapper) throws SQLException, InvalidSqlGenerationException {
         SqlParameter sqlParameter = selector.getSqlAndParameters();
-        String sql = applySoftDeleteFilter(sqlParameter.getSql(), deletedAtColumn);
+        String sql = sqlParameter.getSql();
         this.jormLogger.info(sql);
         this.jormLogger.startRecord(alias, sql);
         try (PreparedStatement ps = connection.prepareStatement(sql)) {

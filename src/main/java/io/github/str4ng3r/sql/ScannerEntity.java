@@ -42,7 +42,10 @@ class ScannerEntity {
      * so mapping a ResultSet no longer calls getDeclaredConstructor/getDeclaredField per row/cell.
      */
     static void buildReflectionCache(Class<?> clazz, EntityMetaData meta) {
-        Map<String, Field> fields = new HashMap<>();
+        // Case-insensitive keys so ResultSet column labels match field names
+        // regardless of the database's identifier case folding (e.g. Oracle
+        // upper-cases unquoted identifiers: ID, NAME, DELETEDAT).
+        Map<String, Field> fields = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         // Walk the class hierarchy so inherited fields are also mappable.
         for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
             for (Field field : c.getDeclaredFields()) {
