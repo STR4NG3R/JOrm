@@ -16,6 +16,15 @@ public class JormLogger {
      */
     private static final ConcurrentHashMap<String, Metrics> metricsByQuery = new ConcurrentHashMap<>();
 
+    /**
+     * The record started by the most recent startRecord on THIS logger instance.
+     * A JormLogger is created per Runner (see CommonRunner), and a Runner is used
+     * by a single thread, so holding the pending record here — instead of reading
+     * the shared deque's last element in Metrics — makes start/end timing correct
+     * even when many threads share the same alias/Metrics singleton.
+     */
+    private Metrics.TimeRecord pending;
+
     public void setEnableMetrics(boolean enableMetrics) {
         this.enableMetrics = enableMetrics;
     }
@@ -47,7 +56,7 @@ public class JormLogger {
 
     public void startRecord(String alias, String sql) {
         if (!enableMetrics) return;
-        metricsByQuery.computeIfAbsent(alias, k -> new Metrics()).startRecord(sql);
+        pending = metricsByQuery.computeIfAbsent(alias, k -> new Metrics()).startRecord(sql);
     }
 
     public void startRecord(String alias) {
@@ -58,8 +67,9 @@ public class JormLogger {
         if (!enableMetrics) return;
         Metrics metrics = metricsByQuery.get(alias);
         if (metrics == null) return;
-        metrics.endRecord();
-        Metrics.TimeRecord last = metrics.getLastRecord();
+        Metrics.TimeRecord last = pending;
+        pending = null;
+        metrics.endRecord(last);
         if (last != null) {
             System.out.println("Alias: " + alias
                     + " | duration: " + last.getDuration() + "ms"

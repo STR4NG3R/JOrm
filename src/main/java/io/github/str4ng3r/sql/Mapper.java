@@ -25,6 +25,16 @@ public class Mapper<T> {
 
     }
 
+    /**
+     * Updates the alias used for metric record names. Allows a single Mapper to be
+     * reused across operations on the same (single-threaded) Runner even after
+     * enableMetrics(alias) changes the alias.
+     */
+    Mapper<T> withAlias(String alias) {
+        this.alias = alias == null ? "" : alias;
+        return this;
+    }
+
     Class<T> validateEntity(T entity) throws InvalidSqlGenerationException {
         Class<T> clazz = (Class<T>) entity.getClass();
         if (!clazz.isAnnotationPresent(Entity.class)) {
@@ -45,7 +55,7 @@ public class Mapper<T> {
     }
 
     public void flushValues(EntityMetaData e) {
-        while (!e.values.isEmpty()) e.values.remove(0);
+        e.values.clear();
     }
 
     public T mapFromHashMap(Map<String, Object> data, Class<T> clazz) {

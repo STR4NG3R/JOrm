@@ -23,6 +23,20 @@ public class EntityMetaData {
     Map<String, Field> fieldCache;
     Constructor<?> noArgConstructor;
 
+    // Ordered @Column fields (matching the order of `columns`) and the @Id field,
+    // precomputed once so value extraction (e.g. batch insert) needs no per-row
+    // annotation scanning / getDeclaredFields. Shared read-only after registration.
+    List<Field> columnFields;
+    Field idField;
+
+    public List<Field> getColumnFields() {
+        return columnFields;
+    }
+
+    public Field getIdField() {
+        return idField;
+    }
+
     /**
      * Returns a new EntityMetaData with the structural metadata copied (table, columns, annotations)
      * and a fresh empty values list. Used to avoid mutating the shared registry object per operation.
@@ -41,6 +55,8 @@ public class EntityMetaData {
         clone.values = new ArrayList<>();               // fresh per operation
         clone.fieldCache = this.fieldCache;             // shared read-only
         clone.noArgConstructor = this.noArgConstructor; // shared read-only
+        clone.columnFields = this.columnFields;         // shared read-only
+        clone.idField = this.idField;                   // shared read-only
         return clone;
     }
 

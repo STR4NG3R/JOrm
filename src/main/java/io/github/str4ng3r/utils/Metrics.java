@@ -20,7 +20,14 @@ public class Metrics {
     private final AtomicLong slowQueriesCount = new AtomicLong();
     private final AtomicLong totalMs = new AtomicLong();
 
-    public void startRecord(String sql) {
+    /**
+     * Starts a timed record and returns it so the caller can close it later with
+     * {@link #endRecord(TimeRecord)}. Returning the record (instead of relying on
+     * peekLast) makes timing thread-safe: each caller owns its own record and never
+     * reads one that belongs to another thread or that was evicted by the ring-buffer
+     * reset.
+     */
+    public TimeRecord startRecord(String sql) {
         TimeRecord record = new TimeRecord();
         record.sql = sql;
         record.start = System.nanoTime();
@@ -30,11 +37,15 @@ public class Metrics {
             totalMs.set(0);
             executions.set(1);
         }
-        listRecord.add(record);
+        // offer() (unlike add()) never throws IllegalStateException when the bounded
+        // deque is momentarily full under concurrency; the record is simply dropped
+        // from the retained sample, but its timing is still accounted below.
+        listRecord.offer(record);
+        return record;
     }
 
-    public void endRecord() {
-        TimeRecord record = listRecord.peekLast();
+    public void endRecord(TimeRecord record) {
+        if (record == null) return;
         record.end = System.nanoTime();
         record.record();
         totalMs.addAndGet(record.duration);

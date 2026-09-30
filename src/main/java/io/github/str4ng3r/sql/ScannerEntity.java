@@ -61,6 +61,22 @@ class ScannerEntity {
         } catch (NoSuchMethodException ignored) {
             // No no-arg constructor: mapFromResultSet will fall back to reflection.
         }
+
+        // Precompute the ordered @Column fields and the @Id field so value
+        // extraction never re-scans annotations per row. The iteration order
+        // matches getColumnsFromEntity/getValuesFromEntity (declared field order),
+        // so columnFields[i] corresponds to columns[i].
+        List<Field> columnFields = new ArrayList<>();
+        for (Field field : clazz.getDeclaredFields()) {
+            if (field.isAnnotationPresent(Column.class)) {
+                field.setAccessible(true);
+                columnFields.add(field);
+            } else if (field.isAnnotationPresent(Id.class)) {
+                field.setAccessible(true);
+                meta.idField = field;
+            }
+        }
+        meta.columnFields = columnFields;
     }
 
     public static String createKey(String name, String db, String schema) {
@@ -96,6 +112,29 @@ class ScannerEntity {
                         throw new RuntimeException(e);
                     }
                 });
+        processedEntity.setValues(values);
+    }
+
+    /**
+     * Cache-based variant of {@link #getValuesFromEntity}: extracts @Column values
+     * (and the @Id value) using the precomputed, already-accessible Field lists in
+     * {@code cachedMeta}, avoiding per-call getDeclaredFields and annotation scans.
+     * Used on hot paths such as batch insert.
+     */
+    public static <T> void getValuesFromEntityCached(T entity, EntityMetaData processedEntity, EntityMetaData cachedMeta) {
+        List<Field> columnFields = cachedMeta.getColumnFields();
+        if (columnFields == null) { // cache not built: fall back to reflective scan
+            getValuesFromEntity(entity.getClass(), entity, processedEntity);
+            return;
+        }
+        List<Object> values = new ArrayList<>(columnFields.size());
+        try {
+            for (Field field : columnFields) values.add(field.get(entity));
+            if (cachedMeta.getIdField() != null)
+                processedEntity.setColumnIdValue(cachedMeta.getIdField().get(entity));
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
         processedEntity.setValues(values);
     }
 

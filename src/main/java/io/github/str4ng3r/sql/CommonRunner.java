@@ -22,6 +22,20 @@ public class CommonRunner<T> {
     // commit/rollback can restore it instead of forcing true.
     Boolean autoCommitBeforeTx;
 
+    // A single Mapper reused across operations on this Runner. Runner is used by a
+    // single thread, so reusing the Mapper avoids allocating one per operation.
+    private Mapper<T> mapper;
+
+    /**
+     * Returns this Runner's Mapper, creating it on first use and keeping its alias
+     * in sync with the Runner's current alias (which enableMetrics may change).
+     */
+    protected Mapper<T> mapper() {
+        if (mapper == null) mapper = new Mapper<>(jormLogger, alias);
+        else mapper.withAlias(alias);
+        return mapper;
+    }
+
     public CommonRunner(Connection connection) {
         this.connection = connection;
         jormLogger.setEnable(false);
@@ -97,7 +111,7 @@ public class CommonRunner<T> {
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             for (T d : data) {
                 EntityMetaData e = new EntityMetaData();
-                ScannerEntity.getValuesFromEntity(d.getClass(), d, e);
+                ScannerEntity.getValuesFromEntityCached(d, e, tableMeta);
                 if (tableMeta.getColumnCreatedAt() != null)
                     e.getValues().add(new Date(System.currentTimeMillis()));
 

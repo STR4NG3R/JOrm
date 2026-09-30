@@ -191,7 +191,7 @@ public class Runner<T> extends CommonRunner {
         // Ensure the entity (and thus its soft-delete metadata) is registered.
         deletedAtColumnFor(clazz);
         applySoftDelete(selector);
-        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        Mapper<T> mapper = mapper();
         return jdbcUtils.query(selector, getConnection(), alias,
                 rs -> mapper.mapFromResultSet(rs, clazz));
     }
@@ -203,7 +203,7 @@ public class Runner<T> extends CommonRunner {
         SqlParameter sqlParameter = selector.getSqlAndParameters();
         int count = jdbcUtils.getCount(getConnection(), selector, sqlParameter, alias);
         selector.setPagination(sqlParameter, new Pagination(pageSize, count, currentPage));
-        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        Mapper<T> mapper = mapper();
         List<T> data = jdbcUtils.query(selector, getConnection(), alias,
                 rs -> mapper.mapFromResultSet(rs, clazz));
         return new Template<>(sqlParameter, data);
@@ -291,7 +291,7 @@ public class Runner<T> extends CommonRunner {
     }
 
     public int delete(T data, boolean hardDelete) throws InvalidSqlGenerationException, SQLException {
-        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        Mapper<T> mapper = mapper();
         EntityMetaData processedEntity = mapper.mapFromEntity(data);
         String table = ScannerEntity.createKey(processedEntity.tableName, processedEntity.db, processedEntity.schema);
 
@@ -318,7 +318,7 @@ public class Runner<T> extends CommonRunner {
 
     public int insert(Class<T> clazz, T data)
             throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
-        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        Mapper<T> mapper = mapper();
         EntityMetaData processedEntity = mapper.mapFromEntity(data);
         String columns = String.join(",", processedEntity.getColumns());
 
@@ -345,7 +345,7 @@ public class Runner<T> extends CommonRunner {
 
     public void insert(Class<T> clazz, List<T> data, int batchSize)
             throws InvalidSqlGenerationException, IllegalAccessException, SQLException {
-        Mapper<T> mapper = new Mapper<>(jormLogger, alias);
+        Mapper<T> mapper = mapper();
         EntityMetaData processedEntity = mapper.mapFromEntity(data.get(0));
         commonBatchInsert(processedEntity, clazz, data, batchSize);
     }
