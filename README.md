@@ -1,3 +1,5 @@
+[![](https://jitpack.io/v/STR4NG3R/JORM.svg)](https://jitpack.io/#STR4NG3R/JORM)
+
 # JOrm
 
 **JOrm** is a lightweight Java ORM focused on simplicity, performance, and minimal footprint.
