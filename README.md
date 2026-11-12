@@ -23,6 +23,7 @@ Designed for environments where heavy ORMs are not ideal:
 | 🗺️ Auto mapping | Automatic entity mapping via annotations |
 | ✋ Manual mapping | Full control via `ResultSet` consumer |
 | 📄 Pagination | Built-in paginated queries with metadata |
+| 🧭 Cursor pagination | Keyset pagination: constant cost per page, no `COUNT`, stable under concurrent writes |
 | 🔀 Upsert | Smart insert — updates if record exists |
 | 📦 Batch Insert | Efficient bulk inserts with configurable batch size |
 | 🗑️ Soft Delete | `@DeletedAt` annotation, transparent filtering |
@@ -147,7 +148,7 @@ public class UserDao {
 List<UserDao> users  = runner.select(selectorA, UserDao.MAPPER);
 List<UserDao> admins = runner.select(selectorB, UserDao.MAPPER);
 
-Template<List<UserDao>> page = runner.selectPaginated(1, 10, selector, UserDao.MAPPER);
+Page<UserDao> page = runner.selectPaginated(1, 10, selector, UserDao.MAPPER);
 ```
 
 This keeps mapping logic in one place without coupling the entity to the ORM — `UserDao` remains a plain object, the mapper is just a static field.
@@ -157,13 +158,13 @@ This keeps mapping logic in one place without coupling the entity to the ORM —
 ## Pagination
 
 ```java
-Template<List<UserDao>> page = new Runner<UserDao>(connection)
+Page<UserDao> page = new Runner<UserDao>(connection)
         .selectPaginated(1, 10, selector, UserDao.class);
 
 List<UserDao> users = page.getData();
 ```
 
-The `Template<T>` response includes pagination metadata alongside the data:
+The returned `Page<T>` includes pagination metadata alongside the data (shown here as JSON):
 
 ```json
 {
@@ -178,13 +179,160 @@ The `Template<T>` response includes pagination metadata alongside the data:
 Manual mapping is also supported in paginated queries:
 
 ```java
-Template<List<UserDao>> page = new Runner<UserDao>(connection)
+Page<UserDao> page = new Runner<UserDao>(connection)
         .selectPaginated(1, 10, selector, rs -> new UserDao(
                 rs.getInt("id"),
                 rs.getString("name"),
                 rs.getString("email")
         ));
 ```
+
+### One result type: `Page<T>`
+
+Both `selectPaginated` (offset) and `selectCursor` (keyset) return a `Page<T>`, so the calling code does not care which style produced it:
+
+```java
+Page<UserDao> page = runner.selectPaginated(1, 10, selector, UserDao.class);
+Page<UserDao> page = runner.selectCursor(10, cursor, selector, UserDao.class);
+
+page.getData();        // List<UserDao>
+page.getPageSize();
+page.hasNext();        // works for both
+```
+
+Metadata that only makes sense for one style is `null` on the other:
+
+| Method | Offset (`selectPaginated`) | Cursor (`selectCursor`) |
+|---|---|---|
+| `getCurrentPage()` | set | `null` |
+| `getCount()`, `getTotalPages()` | set | `null`, unless you chain `withCount()` |
+| `getNextCursor()` | `null` | set (`null` on the last page) |
+
+Existing code keeps compiling: the offset result is an `OffsetPage<T>`, which still is a `Template<List<T>>`.
+
+### What each one returns
+
+Same type, different fields filled in. Offset (`selectPaginated`), page 2 of 12:
+
+```json
+{
+  "data": [ ... 10 users ... ],
+  "currentPage": 2,
+  "pageSize": 10,
+  "count": 120,
+  "totalPages": 12,
+  "nextCursor": null
+}
+```
+
+Cursor (`selectCursor`), a page that is not the last one:
+
+```json
+{
+  "data": [ ... 10 users ... ],
+  "pageSize": 10,
+  "nextCursor": "dDIwMjMtMTItMDFUMTI6MDg6MDBa.aTQy",
+  "currentPage": null,
+  "count": null,
+  "totalPages": null
+}
+```
+
+On the last cursor page `nextCursor` is `null`. The cursor token above is illustrative; treat it as opaque.
+
+| Field | Offset | Cursor |
+|---|---|---|
+| `data` | yes | yes |
+| `pageSize` | yes | yes |
+| `hasNext()` | `currentPage < totalPages` | `nextCursor != null` |
+| `currentPage` | yes | `null` |
+| `count` | yes (runs a `COUNT(*)`) | `null` (no `COUNT`), or set with `withCount()` |
+| `totalPages` | yes | `null`, or set with `withCount()` |
+| `nextCursor` | `null` | token, or `null` on the last page |
+
+For the frontend: with offset you can request any page number; with cursor you can only request the next page, by sending back the `nextCursor` of the previous response. Field names are the same in both, so a client can read `data`, `pageSize` and `hasNext` without knowing which style the backend used.
+
+### Offset or cursor?
+
+| | `selectPaginated` (offset) | `selectCursor` (keyset) |
+|---|---|---|
+| Jump to page N | Yes | No (next page only) |
+| Total count / `totalPages` | Yes (runs a `COUNT(*)`) | Only if you chain `withCount()` |
+| Cost on deep pages | Grows with the page (`OFFSET` scans and discards rows) | Constant |
+| Rows change between requests | Can skip or repeat rows | Stable |
+| Needs a unique `ORDER BY` | No | Yes |
+
+Use offset for small/medium tables and UIs with page numbers. Use cursor for feeds, infinite scroll, exports and large tables. Both can coexist in the same project.
+
+---
+
+## Cursor Pagination
+
+Offset pagination (`selectPaginated`) runs a `COUNT(*)` and an `OFFSET` that gets slower on deep pages, and can skip or repeat rows if data changes between requests. `selectCursor` uses **keyset pagination** instead: each page filters by the last row seen, so the cost is constant and no `COUNT` is executed.
+
+```java
+Selector selector = new Selector()
+        .select("users", "id", "name", "email", "createdAt as \"createdAt\"")
+        .orderBy("createdAt", Order.DESC)
+        .orderBy("id", Order.DESC);    // always end with a unique column
+
+Page<UserDao> page = new Runner<UserDao>(connection)
+        .selectCursor(20, null, selector, UserDao.class);   // null = first page
+
+page.getData();
+page.hasNext();
+String next = page.getNextCursor();   // opaque token, send it to the client
+
+// next request: the same Selector can be reused, only the cursor changes
+Page<UserDao> page2 = new Runner<UserDao>(connection)
+        .selectCursor(20, next, selector, UserDao.class);
+```
+
+Manual mapping works too; the order columns must be in the SELECT list so JOrm can read them from the `ResultSet`:
+
+```java
+Page<UserDao> page = runner.selectCursor(20, cursor, selector, UserDao.MAPPER);
+```
+
+### Optional total count
+
+Cursor pages do not run a `COUNT` by default, which is what keeps them cheap. When you need the total (for example to show "1,234 results"), opt in by chaining `withCount()` on the result:
+
+```java
+Page<UserDao> page = new Runner<UserDao>(connection)
+        .selectCursor(20, null, selector, UserDao.class)
+        .withCount();
+
+page.getCount();       // total rows matching the query
+page.getTotalPages();  // ceil(count / pageSize)
+page.getCurrentPage(); // still null: cursor pages have no page number
+```
+
+**Recommended: count only on the first page.** The total rarely changes while a user scrolls, so pay for the `COUNT` once and let the client keep the number:
+
+```java
+CursorPage<UserDao> page = runner.selectCursor(20, cursor, selector, UserDao.class);
+
+if (cursor == null)      // first page only
+    page.withCount();    // later pages skip the extra COUNT(*)
+```
+
+- The count ignores the cursor: it is the size of the whole result set, so every page reports the same number.
+- It costs one extra `COUNT(*)` per call, so avoid calling it on every request.
+- It runs on the same `Connection` as the `Runner`, so call it before closing the connection.
+- The total is a snapshot and can drift if rows change while the user paginates.
+
+Things to know:
+
+- A `Selector` is mutable and not thread-safe. Reusing it across pages of one request flow is fine, but build it per request rather than sharing one instance between threads.
+- Use `Order.ASC` / `Order.DESC` (`io.github.str4ng3r.common.Order`); the older `orderBy(column, boolean descending)` still works. Each column keeps its own direction in the cursor filter.
+- The `ORDER BY` must end with a unique column (usually the `@Id`), otherwise rows with equal sort values can be skipped or repeated. Order columns must be `NOT NULL`.
+- Columns can mix `ASC`/`DESC`. Qualifiers (`u.createdAt`) are fine; with auto mapping the column name must match the entity field name.
+- UUID keys work: PostgreSQL native `uuid` (mapped to `UUID` or `String`), and MySQL `CHAR(36)` / Oracle `VARCHAR2(36)` (mapped to `UUID` or `String`). JOrm looks at the real column type to bind the cursor value correctly. A UUID is random, so use it only as the last tiebreaker (`.orderBy("createdAt", Order.DESC).orderBy("id", Order.DESC)`) unless you do not care about a meaningful order (or use UUIDv7, which is time-ordered). Binary storage (`BINARY(16)` / `RAW(16)`) is not covered by the cursor.
+- Works on PostgreSQL, MySQL and Oracle (`LIMIT n` / `FETCH FIRST n ROWS ONLY`). Create an index on the `ORDER BY` columns for best results.
+- The cursor is Base64url text, not signed. Values are always bound as parameters, so a tampered cursor cannot inject SQL; it can only change which rows are returned.
+- Tradeoffs: no "jump to page N", and no total count unless you chain `withCount()`. Use `selectPaginated` when you need page numbers.
+- Soft-deleted rows are excluded the same way as in every other query.
 
 ---
 

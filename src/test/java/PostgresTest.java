@@ -26,6 +26,7 @@ public class PostgresTest extends AbstractDialectTest {
     /** Shared across all test methods — started once, stopped once. */
     private static PostgreSQLContainer<?> container;
     private static Connection connection;
+    private static Connection strictConnection;
 
     @Override
     protected Constants.SqlDialect dialect() {
@@ -40,6 +41,14 @@ public class PostgresTest extends AbstractDialectTest {
                     container.getUsername(),
                     container.getPassword());
         return connection;
+    }
+
+    @Override
+    protected Connection getStrictConnection() throws SQLException {
+        if (strictConnection == null)
+            strictConnection = DriverManager.getConnection(
+                    container.getJdbcUrl(), container.getUsername(), container.getPassword());
+        return strictConnection;
     }
 
     @BeforeClass
@@ -68,6 +77,7 @@ public class PostgresTest extends AbstractDialectTest {
     @AfterClass
     public static void tearDown() throws SQLException {
         if (connection != null) connection.close();
+        if (strictConnection != null) strictConnection.close();
         if (container != null) container.stop();
     }
 }

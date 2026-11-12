@@ -213,3 +213,24 @@ INSERT INTO Sales (productId, userId, quantity, totalPrice, saleDate) VALUES
 (18, 18, 5, 174.95, '2023-12-22 21:30:00'),
 (19, 19, 2, 159.98, '2023-12-24 22:30:00'),
 (20, 20, 1, 499.99, '2023-12-26 23:30:00');
+
+-- UUID primary keys: native uuid type, with createdAt ties to exercise the tiebreaker
+CREATE TABLE uuid_items (
+    id UUID PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    createdAt TIMESTAMP NOT NULL
+);
+
+INSERT INTO uuid_items (id, name, createdAt) VALUES
+('f47ac10b-58cc-4372-a567-0e02b2c3d479', 'item-1', '2023-01-01 10:00:00'),
+('0c3d5e7f-1a2b-4c3d-8e4f-5a6b7c8d9e0f', 'item-2', '2023-01-01 10:00:00'),
+('9b2e1c4d-7f3a-4b5c-9d6e-1f2a3b4c5d6e', 'item-3', '2023-01-01 10:00:00'),
+('a1b2c3d4-e5f6-4789-8abc-def012345678', 'item-4', '2023-01-01 10:00:00'),
+('123e4567-e89b-42d3-a456-426614174000', 'item-5', '2023-02-01 10:00:00'),
+('550e8400-e29b-41d4-a716-446655440000', 'item-6', '2023-02-01 10:00:00'),
+('c9bf9e57-1685-4c89-bafb-ff5af830be8a', 'item-7', '2023-02-01 10:00:00'),
+('00000000-0000-4000-8000-000000000001', 'item-8', '2023-02-01 10:00:00'),
+('ffffffff-ffff-4fff-bfff-fffffffffff0', 'item-9', '2023-03-01 10:00:00'),
+('7d444840-9dc0-11d1-b245-5ffdce74fad2', 'item-10', '2023-03-01 10:00:00'),
+('2c9e8b1a-3d4f-4a5b-8c6d-7e8f9a0b1c2d', 'item-11', '2023-03-01 10:00:00'),
+('e0e0e0e0-e0e0-40e0-80e0-e0e0e0e0e0e0', 'item-12', '2023-03-01 10:00:00');

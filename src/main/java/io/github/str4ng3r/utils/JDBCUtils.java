@@ -54,7 +54,16 @@ public class JDBCUtils {
      */
     public <R> R query(Selector selector, Connection connection, String alias,
             ResultSetMapper<R> mapper) throws SQLException, InvalidSqlGenerationException {
-        SqlParameter sqlParameter = selector.getSqlAndParameters();
+        return query(selector.getSqlAndParameters(), connection, alias, mapper);
+    }
+
+    /**
+     * Same as above, but runs an already-built {@link SqlParameter}. Needed when
+     * the SQL was post-processed after generation (e.g. LIMIT/OFFSET appended by
+     * pagination), since regenerating it from the selector would lose that.
+     */
+    public <R> R query(SqlParameter sqlParameter, Connection connection, String alias,
+            ResultSetMapper<R> mapper) throws SQLException {
         String sql = sqlParameter.getSql();
         this.jormLogger.info(sql);
         this.jormLogger.startRecord(alias, sql);

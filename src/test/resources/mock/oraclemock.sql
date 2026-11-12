@@ -85,3 +85,22 @@ INSERT INTO userAddress (userId, addressId) VALUES (17, 17);
 INSERT INTO userAddress (userId, addressId) VALUES (18, 18);
 INSERT INTO userAddress (userId, addressId) VALUES (19, 19);
 INSERT INTO userAddress (userId, addressId) VALUES (20, 20);
+
+-- UUID primary keys stored as text (VARCHAR2(36)), with createdAt ties
+CREATE TABLE uuid_items (
+    id VARCHAR2(36) PRIMARY KEY,
+    name VARCHAR2(50) NOT NULL,
+    createdAt TIMESTAMP NOT NULL
+);
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('f47ac10b-58cc-4372-a567-0e02b2c3d479', 'item-1', TIMESTAMP '2023-01-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('0c3d5e7f-1a2b-4c3d-8e4f-5a6b7c8d9e0f', 'item-2', TIMESTAMP '2023-01-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('9b2e1c4d-7f3a-4b5c-9d6e-1f2a3b4c5d6e', 'item-3', TIMESTAMP '2023-01-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('a1b2c3d4-e5f6-4789-8abc-def012345678', 'item-4', TIMESTAMP '2023-01-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('123e4567-e89b-42d3-a456-426614174000', 'item-5', TIMESTAMP '2023-02-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('550e8400-e29b-41d4-a716-446655440000', 'item-6', TIMESTAMP '2023-02-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('c9bf9e57-1685-4c89-bafb-ff5af830be8a', 'item-7', TIMESTAMP '2023-02-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('00000000-0000-4000-8000-000000000001', 'item-8', TIMESTAMP '2023-02-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('ffffffff-ffff-4fff-bfff-fffffffffff0', 'item-9', TIMESTAMP '2023-03-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('7d444840-9dc0-11d1-b245-5ffdce74fad2', 'item-10', TIMESTAMP '2023-03-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('2c9e8b1a-3d4f-4a5b-8c6d-7e8f9a0b1c2d', 'item-11', TIMESTAMP '2023-03-01 10:00:00');
+INSERT INTO uuid_items (id, name, createdAt) VALUES ('e0e0e0e0-e0e0-40e0-80e0-e0e0e0e0e0e0', 'item-12', TIMESTAMP '2023-03-01 10:00:00');

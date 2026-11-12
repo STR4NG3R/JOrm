@@ -237,6 +237,15 @@ public class Mapper<T> {
             if (value instanceof java.time.LocalDate) return java.sql.Date.valueOf((java.time.LocalDate) value);
         }
 
+        // UUID target: text columns (CHAR/VARCHAR) or 16-byte binary (BINARY/RAW)
+        if (targetType == java.util.UUID.class) {
+            if (value instanceof String) return java.util.UUID.fromString(((String) value).trim());
+            if (value instanceof byte[] && ((byte[]) value).length == 16) {
+                java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap((byte[]) value);
+                return new java.util.UUID(bb.getLong(), bb.getLong());
+            }
+        }
+
         // String target from any value
         if (targetType == String.class) return value.toString();
         // Leave as-is; reflection will throw if truly incompatible.

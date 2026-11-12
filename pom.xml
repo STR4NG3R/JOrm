@@ -7,9 +7,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!-- 🔥 IMPORTANTE: cambia esto -->
-    <groupId>io.github.STR4NG3R</groupId>
+    <groupId>com.github.STR4NG3R</groupId>
     <artifactId>jorm</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
     <packaging>jar</packaging>
 
     <name>JOrm</name>
@@ -46,7 +46,7 @@
         <dependency>
             <groupId>com.github.STR4NG3R</groupId>
             <artifactId>querybuilder4j</artifactId>
-            <version>1.2.3</version>
+            <version>1.3.0</version>
         </dependency>
         <!-- TESTS -->
         <dependency>
